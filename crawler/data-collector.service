@@ -1,0 +1,23 @@
+[Unit]
+Description=네이버 쇼핑라이브 데이터 수집 스케줄러
+After=network.target
+
+[Service]
+Type=simple
+User=amore
+WorkingDirectory=/Users/amore/ai_cs 시스템/crawler
+ExecStart=/usr/bin/python3 /Users/amore/ai_cs 시스템/crawler/scheduler.py
+Restart=always
+RestartSec=10
+
+# 로깅
+StandardOutput=append:/Users/amore/ai_cs 시스템/crawler/logs/service.log
+StandardError=append:/Users/amore/ai_cs 시스템/crawler/logs/service_error.log
+
+# 환경 변수
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+
