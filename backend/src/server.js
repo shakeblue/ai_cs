@@ -28,7 +28,7 @@ const app = express();
 
 // 환경변수
 const _v_port = process.env.PORT || 3000;
-const _v_host = process.env.HOST || 'localhost';
+const _v_host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
 const _v_node_env = process.env.NODE_ENV || 'development';
 
 // ============================================================================
