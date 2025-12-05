@@ -2,7 +2,12 @@ node_modules
 npm-debug.log
 .env
 .env.local
+.env.development
+.env.test
 .git
 .gitignore
-*.md
+README.md
+logs
+*.log
+coverage
 .DS_Store

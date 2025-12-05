@@ -44,10 +44,12 @@ app.use(helmet({
 // CORS 설정
 const _v_cors_options = {
   origin: [
-    'http://localhost:3000',  // 프론트엔드
-    'http://localhost:3001',  // 백엔드
-    'https://ai-cs-bf933.web.app',
-    'https://ai-cs-bf933.firebaseapp.com'
+    'http://localhost:3000',  // 로컬 프론트엔드
+    'http://localhost:3001',  // 로컬 백엔드
+    'https://ai-cs-bf933.web.app',  // Firebase 호스팅
+    'https://ai-cs-bf933.firebaseapp.com',  // Firebase 호스팅
+    'https://aics1.netlify.app',  // Netlify 호스팅
+    'https://693277d3cf8c8519f9294182--aics1.netlify.app'  // Netlify 프리뷰
   ],
   credentials: true,
   optionsSuccessStatus: 200,
