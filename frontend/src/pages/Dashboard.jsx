@@ -1405,6 +1405,7 @@ npm start`}
             </Paper>
           </Grid>
         </Grid>
+      </Grid>
       </Container>
       
       {/* 플랫폼 전체 보기 모달 - 글래스모피즘 */}
