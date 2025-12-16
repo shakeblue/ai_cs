@@ -54,6 +54,7 @@ class DynamicDataCollectionScheduler:
             'LOTTEON': 'crawl_multi_brands.py',
             'AMOREMALL': 'crawl_multi_brands.py',
             'INNISFREE_MALL': 'parsers/innisfree_live_parser.py',
+            'NAVER_SHOPPING': 'naver_shopping_crawler.py',
         }
         
         # 수집 통계
