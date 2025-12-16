@@ -701,7 +701,20 @@ const SearchEvents = () => {
                 }}
               >
                 <MenuItem value="">전체</MenuItem>
-                {platformOptions.map((option) => (
+                <MenuItem value="NAVER">네이버</MenuItem>
+                <MenuItem value="NAVER_SHOPPING">네이버스마트스토어</MenuItem>
+                <MenuItem value="KAKAO">카카오</MenuItem>
+                <MenuItem value="11ST">11번가</MenuItem>
+                <MenuItem value="GMARKET">G마켓</MenuItem>
+                <MenuItem value="OLIVEYOUNG">올리브영</MenuItem>
+                <MenuItem value="GRIP">그립</MenuItem>
+                <MenuItem value="MUSINSA">무신사</MenuItem>
+                <MenuItem value="LOTTEON">롯데온</MenuItem>
+                <MenuItem value="AMOREMALL">아모레몰</MenuItem>
+                <MenuItem value="INNISFREE_MALL">이니스프리몰</MenuItem>
+                {platformOptions.filter(opt => 
+                  !['NAVER', 'NAVER_SHOPPING', 'KAKAO', '11ST', 'GMARKET', 'OLIVEYOUNG', 'GRIP', 'MUSINSA', 'LOTTEON', 'AMOREMALL', 'INNISFREE_MALL'].includes(opt.value)
+                ).map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>
