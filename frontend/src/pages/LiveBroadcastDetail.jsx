@@ -419,40 +419,7 @@ const LiveBroadcastDetail = () => {
         </Grid>
       </Paper>
 
-      {/* ========== 2) 방송 스케줄 & 혜택 유효시간 ========== */}
-      <Paper sx={{ p: 3, mb: 3, bgcolor: DARK_COLORS.cardBg, border: `1px solid ${DARK_COLORS.border}`, borderRadius: 3, boxShadow: '0 4px 24px rgba(0, 0, 0, 0.3)' }}>
-        <Typography variant="h6" gutterBottom fontWeight="bold" sx={{ color: '#FFFFFF', display: 'flex', alignItems: 'center' }}>
-          <EventIcon sx={{ mr: 1, color: '#FFFFFF' }} /> 방송 스케줄 & 혜택 유효시간
-        </Typography>
-        <Divider sx={{ mb: 2, borderColor: DARK_COLORS.border }} />
-        
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Typography variant="body2" sx={{ color: DARK_COLORS.text.secondary }}>방송일자</Typography>
-            <Typography variant="body1" fontWeight="bold">{liveData.schedule?.broadcast_date || liveData.broadcast_date}</Typography>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Typography variant="body2" sx={{ color: DARK_COLORS.text.secondary }}>방송시간</Typography>
-            <Typography variant="body1" sx={{ color: DARK_COLORS.text.primary }}>
-              {liveData.schedule?.broadcast_start_time || liveData.broadcast_start_time} ~ {liveData.schedule?.broadcast_end_time || liveData.broadcast_end_time}
-            </Typography>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Typography variant="body2" sx={{ color: DARK_COLORS.text.secondary }}>혜택 유효기간 타입</Typography>
-            <Chip label={liveData.schedule?.benefit_valid_type || liveData.benefit_valid_type} sx={{ bgcolor: alpha(DARK_COLORS.warning, 0.2), color: DARK_COLORS.warning, border: `1px solid ${alpha(DARK_COLORS.warning, 0.3)}` }} size="small" />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Typography variant="body2" sx={{ color: DARK_COLORS.text.secondary }}>혜택 시작일시</Typography>
-            <Typography variant="body1" sx={{ color: DARK_COLORS.text.primary }}>{liveData.schedule?.benefit_start_datetime || liveData.benefit_start_datetime}</Typography>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Typography variant="body2" sx={{ color: DARK_COLORS.text.secondary }}>혜택 종료일시</Typography>
-            <Typography variant="body1" sx={{ color: DARK_COLORS.text.primary }}>{liveData.schedule?.benefit_end_datetime || liveData.benefit_end_datetime}</Typography>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* ========== 3) 상품 목록 및 프로모션 (4개 탭) ========== */}
+      {/* ========== 2) 상품 목록 및 프로모션 (4개 탭) ========== */}
       <Paper sx={{ p: 0, mb: 3, bgcolor: DARK_COLORS.cardBg, border: `1px solid ${DARK_COLORS.border}`, borderRadius: 3, boxShadow: '0 4px 24px rgba(0, 0, 0, 0.3)' }}>
         {/* 탭 헤더 */}
         <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3, pt: 3 }}>
