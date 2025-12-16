@@ -19,10 +19,12 @@ import {
   Dashboard as DashboardIcon,
   Search as SearchIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
+  Store as StoreIcon,
 } from '@mui/icons-material';
 
 import Dashboard from './pages/Dashboard';
 import SearchEvents from './pages/SearchEvents';
+import SearchExhibitions from './pages/SearchExhibitions';
 import LiveBroadcastDetail from './pages/LiveBroadcastDetail';
 import AdminPanel from './pages/AdminPanel';
 
@@ -160,6 +162,24 @@ const NavigationBar = () => {
           </Button>
           <Button
             color="inherit"
+            startIcon={<StoreIcon />}
+            href="/exhibitions"
+            sx={{
+              px: 2.5,
+              py: 1,
+              borderRadius: 2,
+              fontWeight: 500,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                transform: 'translateY(-1px)',
+                transition: 'all 0.2s ease',
+              },
+            }}
+          >
+            입점몰 이벤트, 전시 조회
+          </Button>
+          <Button
+            color="inherit"
             startIcon={<AdminPanelSettingsIcon />}
             href="/admin"
             sx={{
@@ -218,6 +238,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/search" element={<SearchEvents />} />
+              <Route path="/exhibitions" element={<SearchExhibitions />} />
               <Route path="/live/:liveId" element={<LiveBroadcastDetail />} />
               <Route path="/admin" element={<AdminPanel />} />
               <Route path="*" element={<Navigate to="/" replace />} />
