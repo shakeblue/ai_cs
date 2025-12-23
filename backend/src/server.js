@@ -22,7 +22,8 @@ const eventRoutes = require('./routes/eventRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const favoriteRoutes = require('./routes/favoriteRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const eventDetailRoutes = require('./routes/eventDetail');
+const broadcastRoutes = require('./routes/broadcastRoutes');
+const naverSmartstoreRoutes = require('../cj/naver_smartstore_routes');
 
 // Express 앱 생성
 const app = express();
@@ -99,7 +100,10 @@ app.get('/', (p_req, p_res) => {
       events: '/api/events/search',
       dashboard: '/api/dashboard',
       admin: '/api/admin',
-      favorites: '/api/favorites'
+      favorites: '/api/favorites',
+      broadcasts: '/api/broadcasts',
+      broadcastDetail: '/api/broadcasts/:id',
+      naverSmartstore: '/api/naver-smartstore-events'
     },
     note: '프론트엔드는 http://localhost:3000 에서 실행됩니다.'
   });
@@ -117,11 +121,12 @@ app.get('/health', (p_req, p_res) => {
 
 // API 라우트
 app.use('/api/auth', authRoutes);
-app.use('/api/events', eventDetailRoutes);  // 이벤트 상세 조회 (먼저 등록)
-app.use('/api/events', eventRoutes);
+app.use('/api/events', eventRoutes);  // 이벤트 검색, 상세 조회, 상담 문구 생성
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/broadcasts', broadcastRoutes);  // 방송 데이터 API
+app.use('/api/naver-smartstore-events', naverSmartstoreRoutes);  // 네이버 스마트스토어 이벤트
 
 // 404 핸들러
 app.use((p_req, p_res) => {

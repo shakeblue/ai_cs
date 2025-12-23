@@ -20,6 +20,8 @@ import {
   Search as SearchIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   Store as StoreIcon,
+  ShoppingBag as ShoppingBagIcon,
+  PlayCircle as BroadcastIcon,
 } from '@mui/icons-material';
 
 import Dashboard from './pages/Dashboard';
@@ -28,6 +30,9 @@ import SearchExhibitions from './pages/SearchExhibitions';
 import LiveBroadcastDetail from './pages/LiveBroadcastDetail';
 import AdminPanel from './pages/AdminPanel';
 import EventDetail from './pages/EventDetail';
+import NaverSmartStoreEvents from './cj/NaverSmartStoreEvents';
+import BroadcastList from './pages/BroadcastList';
+import BroadcastDetail from './pages/BroadcastDetail';
 
 // Material-UI 테마 설정 - 다우오피스 스타일 참고
 const theme = createTheme({
@@ -181,6 +186,42 @@ const NavigationBar = () => {
           </Button>
           <Button
             color="inherit"
+            startIcon={<ShoppingBagIcon />}
+            href="/naver-events"
+            sx={{
+              px: 2.5,
+              py: 1,
+              borderRadius: 2,
+              fontWeight: 500,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                transform: 'translateY(-1px)',
+                transition: 'all 0.2s ease',
+              },
+            }}
+          >
+            네이버 스마트스토어
+          </Button>
+          <Button
+            color="inherit"
+            startIcon={<BroadcastIcon />}
+            href="/broadcasts"
+            sx={{
+              px: 2.5,
+              py: 1,
+              borderRadius: 2,
+              fontWeight: 500,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                transform: 'translateY(-1px)',
+                transition: 'all 0.2s ease',
+              },
+            }}
+          >
+            방송 데이터 조회
+          </Button>
+          <Button
+            color="inherit"
             startIcon={<AdminPanelSettingsIcon />}
             href="/admin"
             sx={{
@@ -240,6 +281,9 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/search" element={<SearchEvents />} />
               <Route path="/exhibitions" element={<SearchExhibitions />} />
+              <Route path="/naver-events" element={<NaverSmartStoreEvents />} />
+              <Route path="/broadcasts" element={<BroadcastList />} />
+              <Route path="/broadcasts/:broadcastId" element={<BroadcastDetail />} />
               <Route path="/live/:liveId" element={<LiveBroadcastDetail />} />
               <Route path="/events/:eventId" element={<EventDetail />} />
               <Route path="/admin" element={<AdminPanel />} />
