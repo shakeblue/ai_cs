@@ -42,6 +42,9 @@ const BroadcastList = () => {
   const [searchInput, setSearchInput] = useState('');
   const [brand, setBrand] = useState('');
   const [status, setStatus] = useState('');
+  const [broadcastType, setBroadcastType] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [sortBy, setSortBy] = useState('date_desc');
 
   // Debounce search input
@@ -54,6 +57,9 @@ const BroadcastList = () => {
     search: debouncedSearch,
     brand,
     status,
+    broadcastType,
+    startDate,
+    endDate,
     sortBy,
   });
 
@@ -72,6 +78,21 @@ const BroadcastList = () => {
     setPage(1);
   };
 
+  const handleBroadcastTypeChange = (event) => {
+    setBroadcastType(event.target.value);
+    setPage(1);
+  };
+
+  const handleStartDateChange = (event) => {
+    setStartDate(event.target.value);
+    setPage(1);
+  };
+
+  const handleEndDateChange = (event) => {
+    setEndDate(event.target.value);
+    setPage(1);
+  };
+
   const handleSortChange = (event) => {
     setSortBy(event.target.value);
     setPage(1);
@@ -81,6 +102,9 @@ const BroadcastList = () => {
     setSearchInput('');
     setBrand('');
     setStatus('');
+    setBroadcastType('');
+    setStartDate('');
+    setEndDate('');
     setSortBy('date_desc');
     setPage(1);
   };
@@ -217,6 +241,31 @@ const BroadcastList = () => {
                   },
                 }}
               >
+                <InputLabel>Type</InputLabel>
+                <Select value={broadcastType} label="Type" onChange={handleBroadcastTypeChange}>
+                  <MenuItem value="">All Types</MenuItem>
+                  <MenuItem value="replays">Replays</MenuItem>
+                  <MenuItem value="lives">Lives</MenuItem>
+                  <MenuItem value="shortclips">Short Clips</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl
+                fullWidth
+                size="small"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    bgcolor: DARK_COLORS.background,
+                    color: DARK_COLORS.text.primary,
+                    '& fieldset': {
+                      borderColor: DARK_COLORS.border,
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: DARK_COLORS.text.secondary,
+                  },
+                }}
+              >
                 <InputLabel>Sort By</InputLabel>
                 <Select value={sortBy} label="Sort By" onChange={handleSortChange}>
                   <MenuItem value="date_desc">Newest First</MenuItem>
@@ -225,8 +274,55 @@ const BroadcastList = () => {
                   <MenuItem value="coupons_desc">Most Coupons</MenuItem>
                 </Select>
               </FormControl>
+            </Stack>
 
-              {(searchInput || brand || status || sortBy !== 'date_desc') && (
+            {/* Date Range Filters */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Start Date"
+                type="date"
+                value={startDate}
+                onChange={handleStartDateChange}
+                InputLabelProps={{ shrink: true }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    bgcolor: DARK_COLORS.background,
+                    color: DARK_COLORS.text.primary,
+                    '& fieldset': {
+                      borderColor: DARK_COLORS.border,
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: DARK_COLORS.text.secondary,
+                  },
+                }}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="End Date"
+                type="date"
+                value={endDate}
+                onChange={handleEndDateChange}
+                InputLabelProps={{ shrink: true }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    bgcolor: DARK_COLORS.background,
+                    color: DARK_COLORS.text.primary,
+                    '& fieldset': {
+                      borderColor: DARK_COLORS.border,
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: DARK_COLORS.text.secondary,
+                  },
+                }}
+              />
+
+              {(searchInput || brand || status || broadcastType || startDate || endDate || sortBy !== 'date_desc') && (
                 <Chip
                   label="Clear Filters"
                   onClick={handleClearFilters}

@@ -29,12 +29,14 @@ import {
   CardGiftcard as CardGiftcardIcon,
   Chat as ChatIcon,
   Info as InfoIcon,
+  Star as StarIcon,
 } from '@mui/icons-material';
 import { useBroadcastDetail } from '../hooks/useBroadcastDetail';
 import ProductCard from '../components/broadcasts/ProductCard';
 import CouponCard from '../components/broadcasts/CouponCard';
 import BenefitCard from '../components/broadcasts/BenefitCard';
 import ChatList from '../components/broadcasts/ChatList';
+import LivebridgeSection from '../components/broadcasts/LivebridgeSection';
 
 // Dark theme colors
 const DARK_COLORS = {
@@ -225,6 +227,13 @@ const BroadcastDetail = () => {
               label={`Benefits (${broadcast.live_benefits?.length || 0})`}
               iconPosition="start"
             />
+            {broadcast.livebridge && (
+              <Tab
+                icon={<StarIcon />}
+                label="Livebridge 특별혜택"
+                iconPosition="start"
+              />
+            )}
             <Tab
               icon={<ChatIcon />}
               label={`Chat (${broadcast.live_chat?.length || 0})`}
@@ -295,13 +304,18 @@ const BroadcastDetail = () => {
             </Box>
           )}
 
+          {/* Livebridge Tab */}
+          {broadcast.livebridge && activeTab === 3 && (
+            <LivebridgeSection livebridge={broadcast.livebridge} />
+          )}
+
           {/* Chat Tab */}
-          {activeTab === 3 && (
+          {activeTab === (broadcast.livebridge ? 4 : 3) && (
             <ChatList messages={broadcast.live_chat || []} broadcastId={broadcast.id} />
           )}
 
           {/* Info Tab */}
-          {activeTab === 4 && (
+          {activeTab === (broadcast.livebridge ? 5 : 4) && (
             <Card sx={{ bgcolor: DARK_COLORS.cardBg }}>
               <CardContent sx={{ p: 4 }}>
                 <Typography variant="h6" color={DARK_COLORS.text.primary} sx={{ mb: 3 }}>

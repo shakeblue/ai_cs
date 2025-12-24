@@ -16,6 +16,11 @@ from pathlib import Path
 import sys
 import requests
 import urllib3
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,8 +32,19 @@ except ImportError:
     VISION_AVAILABLE = False
     print("⚠ Vision extractor not available")
 
-# Disable SSL warnings for Naver
+# Supabase client
+try:
+    from supabase import create_client, Client
+    import httpx
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+    print("⚠ Supabase client not available. Install with: pip install supabase")
+
+# Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import warnings
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +52,18 @@ logger = logging.getLogger(__name__)
 class LivebridgeCrawler:
     """Crawler for Naver Shopping Live livebridge pages"""
 
-    def __init__(self, use_llm: bool = True):
+    def __init__(self, use_llm: bool = True, vision_provider: VisionProvider = None, use_supabase: bool = True):
         """
         Initialize the livebridge crawler
 
         Args:
             use_llm: Whether to use LLM for image extraction (default: True)
+            vision_provider: Vision LLM provider to use (default: GPT_4O_MINI)
+            use_supabase: Whether to save data to Supabase (default: True)
         """
         self.use_llm = use_llm and VISION_AVAILABLE
+        self.use_supabase = use_supabase and SUPABASE_AVAILABLE
+
         self.session = requests.Session()
         self.session.verify = False  # Disable SSL verification for Naver
         self.session.headers.update({
@@ -55,11 +75,32 @@ class LivebridgeCrawler:
         # Initialize vision extractor if enabled
         if self.use_llm:
             try:
-                self.vision_extractor = VisionExtractor(provider=VisionProvider.GPT_4O_MINI)
+                provider = vision_provider if vision_provider else VisionProvider.GPT_4O_MINI
+                self.vision_extractor = VisionExtractor(provider=provider)
                 logger.info("✓ Vision extractor initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize vision extractor: {e}")
                 self.use_llm = False
+
+        # Initialize Supabase client if enabled
+        if self.use_supabase:
+            try:
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+
+                if not supabase_url or not supabase_key:
+                    logger.warning("SUPABASE_URL or SUPABASE_SECRET_KEY not found in environment")
+                    self.use_supabase = False
+                else:
+                    # Create Supabase client
+                    self.supabase: Client = create_client(supabase_url, supabase_key)
+                    # Create httpx client with SSL verification disabled and override
+                    http_client = httpx.Client(verify=False)
+                    self.supabase.postgrest.session = http_client
+                    logger.info("✓ Supabase client initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Supabase client: {e}")
+                self.use_supabase = False
 
     async def crawl(self, url: str) -> Dict:
         """
@@ -601,6 +642,104 @@ class LivebridgeCrawler:
         }
 
         return result
+
+    def save_to_supabase(self, data: Dict) -> Optional[int]:
+        """
+        Save extracted livebridge data to Supabase
+
+        Args:
+            data: Extracted livebridge data dictionary
+
+        Returns:
+            The livebridge_id if successful, None otherwise
+        """
+        if not self.use_supabase:
+            logger.warning("Supabase not available, skipping database save")
+            return None
+
+        try:
+            logger.info("Saving data to Supabase...")
+
+            # 1. Upsert main livebridge record
+            main_data = {
+                "url": data["url"],
+                "live_datetime": data.get("live_datetime"),
+                "title": data["title"],
+                "brand_name": data.get("brand_name")
+            }
+
+            result = self.supabase.table("livebridge")\
+                .upsert(main_data, on_conflict="url")\
+                .execute()
+
+            if not result.data:
+                logger.error("Failed to insert main livebridge record")
+                return None
+
+            livebridge_id = result.data[0]["id"]
+            logger.info(f"✓ Main record saved (ID: {livebridge_id})")
+
+            # 2. Delete existing related records (for update case)
+            logger.info("Cleaning up existing related records...")
+            self.supabase.table("livebridge_coupons").delete().eq("livebridge_id", livebridge_id).execute()
+            self.supabase.table("livebridge_products").delete().eq("livebridge_id", livebridge_id).execute()
+            self.supabase.table("livebridge_live_benefits").delete().eq("livebridge_id", livebridge_id).execute()
+            self.supabase.table("livebridge_benefits_by_amount").delete().eq("livebridge_id", livebridge_id).execute()
+            self.supabase.table("livebridge_simple_coupons").delete().eq("livebridge_id", livebridge_id).execute()
+
+            # 3. Insert special coupons
+            if data.get("special_coupons"):
+                coupons = [
+                    {**coupon, "livebridge_id": livebridge_id}
+                    for coupon in data["special_coupons"]
+                ]
+                self.supabase.table("livebridge_coupons").insert(coupons).execute()
+                logger.info(f"✓ Inserted {len(coupons)} special coupons")
+
+            # 4. Insert products
+            if data.get("products"):
+                products = [
+                    {**product, "livebridge_id": livebridge_id}
+                    for product in data["products"]
+                ]
+                self.supabase.table("livebridge_products").insert(products).execute()
+                logger.info(f"✓ Inserted {len(products)} products")
+
+            # 5. Insert live benefits
+            if data.get("live_benefits"):
+                benefits = [
+                    {"livebridge_id": livebridge_id, "benefit_text": benefit}
+                    for benefit in data["live_benefits"]
+                ]
+                self.supabase.table("livebridge_live_benefits").insert(benefits).execute()
+                logger.info(f"✓ Inserted {len(benefits)} live benefits")
+
+            # 6. Insert benefits by amount
+            if data.get("benefits_by_amount"):
+                benefits = [
+                    {"livebridge_id": livebridge_id, "benefit_text": benefit}
+                    for benefit in data["benefits_by_amount"]
+                ]
+                self.supabase.table("livebridge_benefits_by_amount").insert(benefits).execute()
+                logger.info(f"✓ Inserted {len(benefits)} benefits by amount")
+
+            # 7. Insert simple coupons
+            if data.get("coupons"):
+                coupons = [
+                    {"livebridge_id": livebridge_id, "coupon_text": coupon}
+                    for coupon in data["coupons"]
+                ]
+                self.supabase.table("livebridge_simple_coupons").insert(coupons).execute()
+                logger.info(f"✓ Inserted {len(coupons)} simple coupons")
+
+            logger.info(f"✓ Successfully saved all data to Supabase (ID: {livebridge_id})")
+            return livebridge_id
+
+        except Exception as e:
+            logger.error(f"Failed to save to Supabase: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
 
 async def main():

@@ -12,7 +12,7 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-export const useBroadcasts = ({ page = 1, limit = 20, search = '', brand = '', status = '', sortBy = 'date_desc' }) => {
+export const useBroadcasts = ({ page = 1, limit = 20, search = '', brand = '', status = '', broadcastType = '', startDate = '', endDate = '', sortBy = 'date_desc' }) => {
   const [broadcasts, setBroadcasts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,6 +38,9 @@ export const useBroadcasts = ({ page = 1, limit = 20, search = '', brand = '', s
         if (search) params.append('search', search);
         if (brand) params.append('brand', brand);
         if (status) params.append('status', status);
+        if (broadcastType) params.append('broadcast_type', broadcastType);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
         if (sortBy) params.append('sort', sortBy);
 
         console.log('🔍 Fetching broadcasts:', `${API_BASE_URL}/api/broadcasts?${params}`);
@@ -68,7 +71,7 @@ export const useBroadcasts = ({ page = 1, limit = 20, search = '', brand = '', s
     };
 
     fetchBroadcasts();
-  }, [page, limit, search, brand, status, sortBy]);
+  }, [page, limit, search, brand, status, broadcastType, startDate, endDate, sortBy]);
 
   const refetch = () => {
     setLoading(true);

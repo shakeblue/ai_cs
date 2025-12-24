@@ -21,10 +21,13 @@ router.get('/', async (req, res) => {
       search = '',
       brand = '',
       status = '',
+      broadcast_type = '',
+      start_date = '',
+      end_date = '',
       sort = 'date_desc',
     } = req.query;
 
-    logger.info(`GET /api/broadcasts - page: ${page}, limit: ${limit}, search: ${search}, brand: ${brand}, status: ${status}, sort: ${sort}`);
+    logger.info(`GET /api/broadcasts - page: ${page}, limit: ${limit}, search: ${search}, brand: ${brand}, status: ${status}, broadcast_type: ${broadcast_type}, start_date: ${start_date}, end_date: ${end_date}, sort: ${sort}`);
 
     const result = await broadcastService.getBroadcasts({
       page: parseInt(page),
@@ -32,6 +35,9 @@ router.get('/', async (req, res) => {
       search,
       brand,
       status,
+      broadcast_type,
+      start_date,
+      end_date,
       sort,
     });
 

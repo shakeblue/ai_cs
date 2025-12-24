@@ -1,0 +1,99 @@
+# Dependencies
+node_modules/
+*/node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
+crawler/.env
+
+# Build outputs
+frontend/build/
+frontend/dist/
+backend/dist/
+
+# Logs
+*.log
+logs/
+backend/logs/
+crawler/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+crawler/__pycache__/
+crawler/parsers/__pycache__/
+
+# Python virtual environments
+venv/
+env/
+ENV/
+crawler/venv/
+crawler/cj/venv/
+**/venv/
+
+# Crawler outputs
+crawler/output/
+crawler/data/
+crawler/cj/output/
+crawler/cj/output_*/
+crawler/cj/debug_output/
+crawler/cj/live_debug_output/
+crawler/cj/investigation_output/
+crawler/cj/comparison_output/
+crawler/cj/prototype_output/
+crawler/cj/scroll_output/
+crawler/cj/replay_data/
+crawler/cj/shortclips_data/
+crawler/cj/naver_event_images/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.bak
+*.backup
+.cache/
+temp/
+tmp/
+
+# Claude Code session data
+.claude/
+
+# AI DevKit user config
+.ai-devkit.json
+
+# Handover/delivery artifacts
+인수인계용_산출물/
+
+# Local Netlify folder
+.netlify

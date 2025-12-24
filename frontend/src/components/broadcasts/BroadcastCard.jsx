@@ -20,8 +20,8 @@ const DARK_COLORS = {
 const BroadcastCard = ({ broadcast }) => {
   const navigate = useNavigate();
 
-  // Get first product image as thumbnail
-  const thumbnail = broadcast.products?.[0]?.image_url || broadcast.products?.[0]?.image || '/placeholder.png';
+  // Use stand_by_image as thumbnail, fallback to first product image
+  const thumbnail = broadcast.stand_by_image || broadcast.products?.[0]?.image_url || broadcast.products?.[0]?.image || '/placeholder.png';
 
   // Format date
   const formatDate = (dateString) => {

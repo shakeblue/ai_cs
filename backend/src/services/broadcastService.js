@@ -19,6 +19,9 @@ async function getBroadcasts(options = {}) {
       search = '',
       brand = '',
       status = '',
+      broadcast_type = '',
+      start_date = '',
+      end_date = '',
       sort = 'date_desc',
     } = options;
 
@@ -37,12 +40,25 @@ async function getBroadcasts(options = {}) {
 
     // Apply brand filter
     if (brand) {
-      query = query.eq('brand_name', brand);
+      query = query.ilike('brand_name', brand);
     }
 
     // Apply status filter
     if (status) {
       query = query.eq('status', status);
+    }
+
+    // Apply broadcast type filter
+    if (broadcast_type) {
+      query = query.eq('broadcast_type', broadcast_type);
+    }
+
+    // Apply date range filter
+    if (start_date) {
+      query = query.gte('broadcast_date', start_date);
+    }
+    if (end_date) {
+      query = query.lte('broadcast_date', end_date);
     }
 
     // Apply sorting
@@ -175,6 +191,72 @@ async function getBroadcastById(broadcastId) {
       logger.error('Error fetching chat:', chatError);
     }
 
+    // Get livebridge data if livebridge_url exists
+    let livebridgeData = null;
+    if (broadcast.livebridge_url) {
+      try {
+        // Get livebridge main record
+        const { data: livebridge, error: livebridgeError } = await supabase
+          .from('livebridge')
+          .select('*')
+          .eq('url', broadcast.livebridge_url)
+          .single();
+
+        if (!livebridgeError && livebridge) {
+          const livebridgeId = livebridge.id;
+
+          // Get livebridge special coupons
+          const { data: specialCoupons, error: specialCouponsError } = await supabase
+            .from('livebridge_coupons')
+            .select('*')
+            .eq('livebridge_id', livebridgeId)
+            .order('id', { ascending: true });
+
+          // Get livebridge products
+          const { data: livebridgeProducts, error: livebridgeProductsError } = await supabase
+            .from('livebridge_products')
+            .select('*')
+            .eq('livebridge_id', livebridgeId)
+            .order('id', { ascending: true });
+
+          // Get livebridge live benefits
+          const { data: liveBenefits, error: liveBenefitsError } = await supabase
+            .from('livebridge_live_benefits')
+            .select('*')
+            .eq('livebridge_id', livebridgeId)
+            .order('id', { ascending: true });
+
+          // Get livebridge benefits by amount
+          const { data: benefitsByAmount, error: benefitsByAmountError } = await supabase
+            .from('livebridge_benefits_by_amount')
+            .select('*')
+            .eq('livebridge_id', livebridgeId)
+            .order('id', { ascending: true });
+
+          // Get livebridge simple coupons
+          const { data: simpleCoupons, error: simpleCouponsError } = await supabase
+            .from('livebridge_simple_coupons')
+            .select('*')
+            .eq('livebridge_id', livebridgeId)
+            .order('id', { ascending: true });
+
+          livebridgeData = {
+            ...livebridge,
+            special_coupons: specialCoupons || [],
+            products: livebridgeProducts || [],
+            live_benefits: liveBenefits || [],
+            benefits_by_amount: benefitsByAmount || [],
+            simple_coupons: simpleCoupons || [],
+          };
+
+          logger.info(`Fetched livebridge data for broadcast ${broadcastId}: ${livebridgeData.special_coupons.length} coupons, ${livebridgeData.products.length} products`);
+        }
+      } catch (livebridgeErr) {
+        logger.error('Error fetching livebridge data:', livebridgeErr);
+        // Continue without livebridge data - non-critical
+      }
+    }
+
     // Combine all data
     const result = {
       ...broadcast,
@@ -182,6 +264,7 @@ async function getBroadcastById(broadcastId) {
       coupons: coupons || [],
       live_benefits: benefits || [],
       live_chat: chat || [],
+      livebridge: livebridgeData,
     };
 
     return {
