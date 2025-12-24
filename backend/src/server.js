@@ -46,14 +46,26 @@ app.use(helmet({
 
 // CORS 설정
 const _v_cors_options = {
-  origin: [
-    'http://localhost:3000',  // 로컬 프론트엔드
-    'http://localhost:3001',  // 로컬 백엔드
-    'https://ai-cs-bf933.web.app',  // Firebase 호스팅
-    'https://ai-cs-bf933.firebaseapp.com',  // Firebase 호스팅
-    'https://aics1.netlify.app',  // Netlify 호스팅
-    'https://693277d3cf8c8519f9294182--aics1.netlify.app'  // Netlify 프리뷰
-  ],
+  origin: function (origin, callback) {
+    // 허용된 도메인 목록
+    const allowedOrigins = [
+      'http://localhost:3000',  // 로컬 프론트엔드
+      'http://localhost:3001',  // 로컬 백엔드
+      'https://ai-cs-bf933.web.app',  // Firebase 호스팅
+      'https://ai-cs-bf933.firebaseapp.com',  // Firebase 호스팅
+      'https://aics1.netlify.app',  // Netlify 호스팅
+    ];
+
+    // 모든 Netlify 도메인 허용 (*.netlify.app)
+    const isNetlify = origin && origin.includes('.netlify.app');
+
+    // origin이 없거나 (Postman 등), 허용 목록에 있거나, Netlify 도메인이면 허용
+    if (!origin || allowedOrigins.includes(origin) || isNetlify) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
 };
