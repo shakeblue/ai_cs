@@ -13,20 +13,23 @@ echo "=== Setting up Python crawler ==="
 
 # Set up paths for Render environment
 export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/ms-playwright
+export VENV_PATH=/opt/render/project/src/crawler/cj/venv
 
-# Install Python dependencies globally (Render provides Python)
+# Create virtual environment in a known location
 cd crawler/cj
 
-echo "Installing Python dependencies..."
-pip3 install --user --upgrade pip
-pip3 install --user -r requirements.txt
+echo "Creating Python virtual environment at $VENV_PATH..."
+python3 -m venv $VENV_PATH
+
+echo "Installing Python dependencies in virtual environment..."
+$VENV_PATH/bin/pip install --upgrade pip
+$VENV_PATH/bin/pip install -r requirements.txt
 
 # Install Playwright browsers
 echo "Installing Playwright browsers to $PLAYWRIGHT_BROWSERS_PATH..."
-python3 -m playwright install chromium
+$VENV_PATH/bin/playwright install chromium
 
-# Verify installation
-echo "Verifying Playwright installation..."
-python3 -m playwright install-deps || echo "Note: System deps may require manual installation"
+echo "Python packages installed successfully!"
+echo "Python path: $VENV_PATH/bin/python"
 
 echo "=== Build completed successfully ==="
