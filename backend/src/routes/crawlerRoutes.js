@@ -55,6 +55,10 @@ router.post('/crawl', async (req, res) => {
 
   logger.info(`Crawler triggered for URL: ${url}`);
 
+  // Log environment for debugging
+  logger.info(`PLAYWRIGHT_BROWSERS_PATH: ${process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET'}`);
+  logger.info(`HOME: ${process.env.HOME}`);
+
   try {
     // Build command arguments
     const args = [CRAWLER_SCRIPT, url];
@@ -62,13 +66,19 @@ router.post('/crawl', async (req, res) => {
       args.push('--save-to-db');
     }
 
+    // Determine Playwright browser path
+    // On Render, should be /opt/render/project/.cache/ms-playwright
+    const playwrightPath = process.env.PLAYWRIGHT_BROWSERS_PATH ||
+                           '/opt/render/project/.cache/ms-playwright';
+
+    logger.info(`Using PLAYWRIGHT_BROWSERS_PATH: ${playwrightPath}`);
+
     // Spawn Python process with environment variables
     const pythonProcess = spawn(PYTHON_CMD, args, {
       cwd: path.dirname(CRAWLER_SCRIPT),
       env: {
         ...process.env,
-        // Ensure PLAYWRIGHT_BROWSERS_PATH is set (should come from render.yaml or system default)
-        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || process.env.HOME + '/.cache/ms-playwright'
+        PLAYWRIGHT_BROWSERS_PATH: playwrightPath
       }
     });
 
