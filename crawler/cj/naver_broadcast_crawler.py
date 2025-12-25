@@ -4,13 +4,14 @@ Naver Shopping Live Broadcast Crawler
 Main entry point for crawling Naver Shopping Live broadcasts
 
 Usage:
-    python naver_broadcast_crawler.py <URL> [--headful] [--output-dir OUTPUT_DIR] [--save-to-db]
+    python naver_broadcast_crawler.py <URL> [--headful] [--output-dir OUTPUT_DIR] [--save-to-db] [--crawl-livebridge]
 
 Example:
     python naver_broadcast_crawler.py https://view.shoppinglive.naver.com/replays/1776510
     python naver_broadcast_crawler.py https://view.shoppinglive.naver.com/lives/1810235?tr=lim --headful
     python naver_broadcast_crawler.py https://view.shoppinglive.naver.com/shortclips/9797637?tr=sclim --output-dir ./my_output
     python naver_broadcast_crawler.py https://view.shoppinglive.naver.com/replays/1776510 --save-to-db
+    python naver_broadcast_crawler.py https://view.shoppinglive.naver.com/replays/1776510 --save-to-db --crawl-livebridge
 """
 
 import argparse
@@ -25,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from crawlers.replays_crawler import ReplaysCrawler
 from crawlers.lives_crawler import LivesCrawler
 from crawlers.shortclips_crawler import ShortClipsCrawler
+from crawlers.base_crawler import BaseCrawler
 from utils.url_detector import URLDetector, URLType
 from utils.output_writer import OutputWriter
 
@@ -35,6 +37,16 @@ try:
 except ImportError:
     PERSISTENCE_AVAILABLE = False
     BroadcastSaver = None
+
+# Import livebridge crawler (optional)
+try:
+    from crawlers.livebridge_crawler import LivebridgeCrawler
+    from vision_extractor import VisionProvider
+    LIVEBRIDGE_AVAILABLE = True
+except ImportError:
+    LIVEBRIDGE_AVAILABLE = False
+    LivebridgeCrawler = None
+    VisionProvider = None
 
 
 # Configure logging
@@ -118,6 +130,18 @@ Examples:
         '--db-only',
         action='store_true',
         help='Save to database only, skip JSON file output'
+    )
+
+    parser.add_argument(
+        '--crawl-livebridge',
+        action='store_true',
+        help='Also crawl livebridge page if accessible (saves to Supabase)'
+    )
+
+    parser.add_argument(
+        '--no-livebridge-llm',
+        action='store_true',
+        help='Disable LLM for livebridge crawling (faster but less complete)'
     )
 
     args = parser.parse_args()
@@ -228,6 +252,69 @@ Examples:
             if not output_file:
                 return 1
 
+    # Crawl livebridge if requested
+    livebridge_result = None
+    if args.crawl_livebridge:
+        if not LIVEBRIDGE_AVAILABLE:
+            logger.warning("⚠ Livebridge crawler not available. Please install dependencies.")
+            logger.warning("  Run: pip install -r requirements.txt")
+        else:
+            logger.info("\n" + "="*60)
+            logger.info("Checking livebridge availability...")
+            logger.info("="*60)
+
+            # Construct livebridge URL
+            livebridge_url = f"https://shoppinglive.naver.com/livebridge/{broadcast_id}"
+            logger.info(f"Livebridge URL: {livebridge_url}")
+
+            # Check if livebridge is accessible
+            if BaseCrawler.check_livebridge_accessible(livebridge_url):
+                logger.info("✓ Livebridge page is accessible, starting crawl...")
+
+                try:
+                    # Initialize livebridge crawler
+                    livebridge_crawler = LivebridgeCrawler(
+                        use_llm=not args.no_livebridge_llm,
+                        vision_provider=VisionProvider.GPT_4O_MINI if VisionProvider else None,
+                        use_supabase=True  # Always save livebridge to Supabase
+                    )
+
+                    # Crawl livebridge
+                    livebridge_data = await livebridge_crawler.crawl(livebridge_url)
+
+                    # Save to Supabase
+                    livebridge_id = livebridge_crawler.save_to_supabase(livebridge_data)
+
+                    if livebridge_id:
+                        livebridge_result = {
+                            'status': 'success',
+                            'livebridge_id': livebridge_id,
+                            'url': livebridge_url,
+                            'records': {
+                                'special_coupons': len(livebridge_data.get('special_coupons', [])),
+                                'products': len(livebridge_data.get('products', [])),
+                                'live_benefits': len(livebridge_data.get('live_benefits', [])),
+                                'benefits_by_amount': len(livebridge_data.get('benefits_by_amount', [])),
+                                'simple_coupons': len(livebridge_data.get('coupons', []))
+                            }
+                        }
+                        logger.info("✓ Livebridge crawl completed successfully!")
+                        logger.info(f"  Livebridge ID: {livebridge_id}")
+                        logger.info(f"  Special Coupons: {livebridge_result['records']['special_coupons']}")
+                        logger.info(f"  Products: {livebridge_result['records']['products']}")
+                        logger.info(f"  Live Benefits: {livebridge_result['records']['live_benefits']}")
+                        logger.info(f"  Benefits by Amount: {livebridge_result['records']['benefits_by_amount']}")
+                        logger.info(f"  Simple Coupons: {livebridge_result['records']['simple_coupons']}")
+                    else:
+                        logger.error("✗ Livebridge save to Supabase failed")
+
+                except Exception as e:
+                    logger.error(f"✗ Livebridge crawl failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                logger.info("✗ Livebridge page not accessible or does not exist")
+
     # Summary
     logger.info("="*60)
     logger.info("Crawl completed successfully!")
@@ -235,6 +322,8 @@ Examples:
         logger.info(f"  JSON file: {output_file}")
     if db_result and db_result['status'] == 'success':
         logger.info(f"  Database: Saved broadcast {db_result['broadcast_id']}")
+    if livebridge_result and livebridge_result['status'] == 'success':
+        logger.info(f"  Livebridge: Saved livebridge {livebridge_result['livebridge_id']}")
     logger.info("="*60)
 
     return 0

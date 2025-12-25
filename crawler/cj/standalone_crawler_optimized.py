@@ -87,7 +87,9 @@ class OptimizedStandaloneCrawler:
         verbose: bool = False,
         concurrency: int = 5,
         chunk_size: int = 10,
-        max_retries: int = 3
+        max_retries: int = 3,
+        crawl_livebridge: bool = True,
+        use_livebridge_llm: bool = True
     ):
         """
         Initialize the optimized crawler
@@ -97,11 +99,15 @@ class OptimizedStandaloneCrawler:
             concurrency: Number of concurrent browser contexts
             chunk_size: Number of broadcasts to process per chunk
             max_retries: Maximum retry attempts for failed crawls
+            crawl_livebridge: Automatically crawl livebridge pages if available (default: True)
+            use_livebridge_llm: Use LLM for livebridge image extraction (default: True, complete data extraction)
         """
         self.verbose = verbose
         self.concurrency = concurrency
         self.chunk_size = chunk_size
         self.max_retries = max_retries
+        self.crawl_livebridge = crawl_livebridge
+        self.use_livebridge_llm = use_livebridge_llm
 
         self.db: SupabaseClient = get_db_client()
         self.execution_id: Optional[str] = None
@@ -317,9 +323,19 @@ class OptimizedStandaloneCrawler:
 
             # Create appropriate crawler with external context
             if url_type == URLType.REPLAYS:
-                crawler = ReplaysCrawler(headless=True, external_context=context)
+                crawler = ReplaysCrawler(
+                    headless=True,
+                    external_context=context,
+                    crawl_livebridge=self.crawl_livebridge,
+                    use_livebridge_llm=self.use_livebridge_llm
+                )
             elif url_type == URLType.LIVES:
-                crawler = LivesCrawler(headless=True, external_context=context)
+                crawler = LivesCrawler(
+                    headless=True,
+                    external_context=context,
+                    crawl_livebridge=self.crawl_livebridge,
+                    use_livebridge_llm=self.use_livebridge_llm
+                )
             else:
                 logger.warning(f"Unsupported URL type: {url_type.value}")
                 return None
@@ -657,11 +673,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
+  # Basic usage (livebridge + LLM enabled by default)
   python standalone_crawler_optimized.py --brand-name "Sulwhasoo"
 
   # With custom concurrency and chunk size
   python standalone_crawler_optimized.py --brand-name "Innisfree" --concurrency 10 --chunk-size 20
+
+  # Fast mode: disable LLM for speed (API data only)
+  python standalone_crawler_optimized.py --brand-name "Sulwhasoo" --no-livebridge-llm
+
+  # Disable livebridge crawling entirely
+  python standalone_crawler_optimized.py --brand-name "Sulwhasoo" --no-livebridge
 
   # Resume from checkpoint
   python standalone_crawler_optimized.py --brand-name "Sulwhasoo" --resume
@@ -673,6 +695,9 @@ Performance Notes:
   - Default concurrency (5) is safe for most systems
   - Increase concurrency (10-15) for faster execution on powerful machines
   - Chunk size affects memory usage: smaller chunks = less memory
+  - Livebridge crawling is ENABLED by default (complete data extraction)
+  - LLM is ENABLED by default (extracts image-based benefits, ~60-90s per broadcast)
+  - Use --no-livebridge-llm for faster crawling (~30s per broadcast, API data only)
         """
     )
 
@@ -736,6 +761,18 @@ Performance Notes:
         help='Resume from last checkpoint'
     )
 
+    parser.add_argument(
+        '--no-livebridge',
+        action='store_true',
+        help='Disable automatic livebridge crawling (default: enabled)'
+    )
+
+    parser.add_argument(
+        '--no-livebridge-llm',
+        action='store_true',
+        help='Disable LLM for livebridge image extraction (default: enabled, faster without LLM)'
+    )
+
     args = parser.parse_args()
 
     # Validate arguments
@@ -751,7 +788,9 @@ Performance Notes:
             verbose=args.verbose,
             concurrency=args.concurrency,
             chunk_size=args.chunk_size,
-            max_retries=args.max_retries
+            max_retries=args.max_retries,
+            crawl_livebridge=not args.no_livebridge,
+            use_livebridge_llm=not args.no_livebridge_llm
         )
 
         items_found = crawler.run(

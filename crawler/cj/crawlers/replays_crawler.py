@@ -22,6 +22,28 @@ class ReplaysCrawler(BaseCrawler):
     def get_url_type(self) -> str:
         return "replays"
 
+    async def crawl(self, url: str) -> Dict[str, Any]:
+        """
+        Main crawl method with optional livebridge integration
+
+        Args:
+            url: The URL to crawl
+
+        Returns:
+            Complete crawl result with metadata, broadcast data, and optional livebridge data
+        """
+        # Call parent crawl method
+        result = await super().crawl(url)
+
+        # Crawl livebridge if enabled and broadcast_id is available
+        broadcast_id = result.get('broadcast', {}).get('broadcast_id')
+        if broadcast_id and self.crawl_livebridge:
+            livebridge_result = await self._crawl_livebridge_if_available(broadcast_id)
+            if livebridge_result:
+                result['livebridge'] = livebridge_result
+
+        return result
+
     async def extract_data(self, url: str) -> Dict[str, Any]:
         """
         Extract data from replays URL using API interception

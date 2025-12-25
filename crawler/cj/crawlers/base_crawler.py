@@ -20,13 +20,15 @@ class BaseCrawler(ABC):
 
     CRAWLER_VERSION = "1.0.0"
 
-    def __init__(self, headless: bool = True, external_context=None):
+    def __init__(self, headless: bool = True, external_context=None, crawl_livebridge: bool = False, use_livebridge_llm: bool = True):
         """
         Initialize BaseCrawler
 
         Args:
             headless: Whether to run browser in headless mode
             external_context: Optional external browser context from pool (for optimization)
+            crawl_livebridge: Whether to automatically crawl livebridge page if available (default: False)
+            use_livebridge_llm: Whether to use LLM for livebridge extraction (default: True, only used if crawl_livebridge=True)
         """
         self.headless = headless
         self.browser: Optional[Browser] = None
@@ -34,6 +36,8 @@ class BaseCrawler(ABC):
         self.playwright = None
         self.external_context = external_context  # Context provided by browser pool
         self.owns_browser = external_context is None  # Track if we own the browser lifecycle
+        self.crawl_livebridge = crawl_livebridge
+        self.use_livebridge_llm = use_livebridge_llm
 
     @abstractmethod
     async def extract_data(self, url: str) -> Dict[str, Any]:
@@ -200,6 +204,120 @@ class BaseCrawler(ABC):
             Livebridge URL
         """
         return f"https://shoppinglive.naver.com/livebridge/{broadcast_id}"
+
+    @staticmethod
+    def check_livebridge_accessible(livebridge_url: str, timeout: int = 5) -> bool:
+        """
+        Check if a livebridge URL is accessible
+
+        Args:
+            livebridge_url: The livebridge URL to check
+            timeout: Request timeout in seconds (default: 5)
+
+        Returns:
+            True if URL is accessible (status code 200), False otherwise
+        """
+        import requests
+        import urllib3
+
+        # Disable SSL warnings
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        try:
+            response = requests.head(
+                livebridge_url,
+                timeout=timeout,
+                verify=False,
+                allow_redirects=True,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                }
+            )
+
+            # If HEAD request doesn't work, try GET
+            if response.status_code == 405:  # Method Not Allowed
+                response = requests.get(
+                    livebridge_url,
+                    timeout=timeout,
+                    verify=False,
+                    allow_redirects=True,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                    }
+                )
+
+            return response.status_code == 200
+        except Exception as e:
+            logger.debug(f"Livebridge URL not accessible: {e}")
+            return False
+
+    async def _crawl_livebridge_if_available(self, broadcast_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Crawl livebridge page if available and enabled
+
+        Args:
+            broadcast_id: The broadcast ID
+
+        Returns:
+            Dict with livebridge data and status, or None if not crawled
+        """
+        if not self.crawl_livebridge:
+            return None
+
+        try:
+            # Import here to avoid circular dependency and allow graceful degradation
+            from crawlers.livebridge_crawler import LivebridgeCrawler
+            from vision_extractor import VisionProvider
+        except ImportError as e:
+            logger.warning(f"Livebridge crawler not available: {e}")
+            return None
+
+        # Construct livebridge URL
+        livebridge_url = self.construct_livebridge_url(broadcast_id)
+        logger.info(f"Checking livebridge: {livebridge_url}")
+
+        # Check if accessible
+        if not self.check_livebridge_accessible(livebridge_url):
+            logger.info("✗ Livebridge page not accessible")
+            return {'status': 'not_available', 'url': livebridge_url}
+
+        logger.info("✓ Livebridge page accessible, crawling...")
+
+        try:
+            # Initialize livebridge crawler
+            livebridge_crawler = LivebridgeCrawler(
+                use_llm=self.use_livebridge_llm,
+                vision_provider=VisionProvider.GPT_4O_MINI if self.use_livebridge_llm else None,
+                use_supabase=True
+            )
+
+            # Crawl livebridge
+            livebridge_data = await livebridge_crawler.crawl(livebridge_url)
+
+            # Save to Supabase
+            livebridge_id = livebridge_crawler.save_to_supabase(livebridge_data)
+
+            if livebridge_id:
+                logger.info(f"✓ Livebridge saved to Supabase (ID: {livebridge_id})")
+                return {
+                    'status': 'success',
+                    'livebridge_id': livebridge_id,
+                    'url': livebridge_url,
+                    'records': {
+                        'special_coupons': len(livebridge_data.get('special_coupons', [])),
+                        'products': len(livebridge_data.get('products', [])),
+                        'live_benefits': len(livebridge_data.get('live_benefits', [])),
+                        'benefits_by_amount': len(livebridge_data.get('benefits_by_amount', [])),
+                        'simple_coupons': len(livebridge_data.get('coupons', []))
+                    }
+                }
+            else:
+                logger.error("✗ Failed to save livebridge to Supabase")
+                return {'status': 'save_failed', 'url': livebridge_url}
+
+        except Exception as e:
+            logger.error(f"✗ Livebridge crawl failed: {e}")
+            return {'status': 'error', 'url': livebridge_url, 'error': str(e)}
 
     def _add_error(self, errors: list, error_type: str, message: str, **kwargs):
         """
