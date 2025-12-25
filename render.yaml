@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: starter
     rootDir: backend
-    buildCommand: ./render-build.sh
+    buildCommand: bash render-build.sh
     startCommand: npm start
     envVars:
       - key: NODE_ENV
