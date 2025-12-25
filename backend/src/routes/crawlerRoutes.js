@@ -62,13 +62,13 @@ router.post('/crawl', async (req, res) => {
       args.push('--save-to-db');
     }
 
-    // Spawn Python process with correct Playwright browser path
+    // Spawn Python process with environment variables
     const pythonProcess = spawn(PYTHON_CMD, args, {
       cwd: path.dirname(CRAWLER_SCRIPT),
       env: {
         ...process.env,
-        // Use environment variable or fall back to local path
-        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || '/home/long/.cache/ms-playwright'
+        // Ensure PLAYWRIGHT_BROWSERS_PATH is set (should come from render.yaml or system default)
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || process.env.HOME + '/.cache/ms-playwright'
       }
     });
 
