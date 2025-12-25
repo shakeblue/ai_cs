@@ -36,7 +36,13 @@ logger = logging.getLogger(__name__)
 
 
 class NaverSearchCrawler:
-    """Crawler for Naver Shopping Live search results"""
+    """
+    Crawler for Naver Shopping Live search results
+
+    Note: Naver uses CSS Modules which generate hashed class names like 'VideoBoxWrapper_wrap_Usbk7'.
+    The hash suffix (e.g., 'Usbk7') changes with each deployment, so we use prefix matching
+    with [class*='VideoBoxWrapper_wrap'] instead of exact class names.
+    """
 
     def __init__(self, headless=True):
         """Initialize crawler"""
@@ -55,6 +61,11 @@ class NaverSearchCrawler:
         options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_argument('--remote-debugging-port=9222')
+
+        # Bypass SSL certificate errors
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--ignore-ssl-errors')
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
         # Use system ChromeDriver (already installed at /usr/bin/chromedriver)
         service = Service('/usr/bin/chromedriver')
@@ -133,15 +144,19 @@ class NaverSearchCrawler:
 
         try:
             # Find all broadcast cards (various possible selectors)
+            # New strategy: find container divs that have broadcast links inside
+            # Use prefix matching to avoid breaking when Naver changes CSS hashes
             card_selectors = [
+                "[class*='VideoBoxWrapper_wrap']",  # New Naver structure - container div (prefix only)
+                "[class*='BroadcastUnderCard']",
+                "[class*='BroadcastCard']",
+                "[class*='BroadcastSideCard']",
+                "[class*='VerticalCardList_item']",
                 ".live_card",
                 ".ProductLive_live_card__",
                 "[class*='live_card']",
                 "[class*='LiveCard']",
                 ".live-card",
-                "a[href*='/lives/']",
-                "a[href*='/replays/']",
-                "a[href*='/shortclips/']",
             ]
 
             cards = []
@@ -149,11 +164,31 @@ class NaverSearchCrawler:
                 try:
                     found_cards = self.driver.find_elements(By.CSS_SELECTOR, selector)
                     if found_cards:
-                        cards = found_cards
-                        logger.info(f"Found {len(cards)} cards using selector: {selector}")
-                        break
+                        # Filter cards that actually have broadcast links
+                        cards = [card for card in found_cards if self.has_broadcast_link(card)]
+                        if cards:
+                            logger.info(f"Found {len(cards)} cards using selector: {selector}")
+                            break
                 except:
                     continue
+
+            # Fallback: if no containers found, try selecting links directly
+            if not cards:
+                logger.info("No card containers found, trying to select links directly")
+                link_selectors = [
+                    "a[href*='/lives/']",
+                    "a[href*='/replays/']",
+                    "a[href*='/shortclips/']",
+                ]
+                for selector in link_selectors:
+                    try:
+                        found_cards = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if found_cards:
+                            cards = found_cards
+                            logger.info(f"Found {len(cards)} links using selector: {selector}")
+                            break
+                    except:
+                        continue
 
             if not cards:
                 logger.warning("No broadcast cards found")
@@ -173,6 +208,14 @@ class NaverSearchCrawler:
             logger.error(f"Error extracting broadcasts: {e}")
 
         return broadcasts
+
+    def has_broadcast_link(self, card):
+        """Check if card contains a broadcast link"""
+        try:
+            link = card.find_element(By.CSS_SELECTOR, "a[href*='/lives/'], a[href*='/replays/'], a[href*='/shortclips/'], a[href*='/livebridge/']")
+            return link is not None
+        except:
+            return False
 
     def extract_broadcast_info(self, card, index):
         """Extract information from a single broadcast card"""
@@ -220,8 +263,17 @@ class NaverSearchCrawler:
 
     def extract_url(self, card):
         """Extract URL from card"""
+        # Try to find broadcast link within card (new structure)
         try:
-            # Try to find link element
+            link = card.find_element(By.CSS_SELECTOR, "a[href*='/lives/'], a[href*='/replays/'], a[href*='/shortclips/'], a[href*='/livebridge/']")
+            url = link.get_attribute("href")
+            if url:
+                return url
+        except:
+            pass
+
+        # Try to find any link element (old structure)
+        try:
             link = card.find_element(By.CSS_SELECTOR, "a")
             url = link.get_attribute("href")
             if url and ('lives' in url or 'replays' in url or 'shortclips' in url or 'livebridge' in url):
@@ -261,6 +313,10 @@ class NaverSearchCrawler:
     def extract_title(self, card):
         """Extract title from card"""
         title_selectors = [
+            "[class*='VideoTitle_wrap']",  # New Naver structure (prefix only)
+            "[class*='VideoTitle']",
+            "[class*='BroadcastUnderCard_title']",
+            "[class*='BroadcastSideCard_title']",
             ".live_title",
             ".ProductLive_live_title__",
             "[class*='live_title']",
@@ -282,11 +338,25 @@ class NaverSearchCrawler:
 
     def extract_thumbnail(self, card):
         """Extract thumbnail URL from card"""
-        try:
-            img = card.find_element(By.CSS_SELECTOR, "img")
-            return img.get_attribute("src")
-        except:
-            return None
+        thumbnail_selectors = [
+            "[class*='CardThumbnail_image']",  # New Naver structure (prefix only)
+            "[class*='BroadcastAutoPlayCard_image']",
+            "[class*='thumbnail'] img",
+            "img[src*='pstatic.net']",  # Naver CDN images
+            "img[alt]",
+            "img",
+        ]
+
+        for selector in thumbnail_selectors:
+            try:
+                img = card.find_element(By.CSS_SELECTOR, selector)
+                src = img.get_attribute("src")
+                if src and src.startswith("http"):
+                    return src
+            except:
+                continue
+
+        return None
 
     def determine_event_type(self, url):
         """Determine event type from URL"""
@@ -303,19 +373,25 @@ class NaverSearchCrawler:
     def extract_status(self, card):
         """Extract broadcast status (live, upcoming, ended)"""
         try:
-            # Look for status badge
-            badge_selectors = [".badge", ".live_badge", "[class*='badge']", ".status"]
+            # Look for status badge or view count indicator
+            badge_selectors = [
+                ".blind",  # New structure: <span class="blind">다시보기</span> or <span class="blind">LIVE</span>
+                ".badge",
+                ".live_badge",
+                "[class*='badge']",
+                ".status"
+            ]
 
             for selector in badge_selectors:
                 try:
                     badge = card.find_element(By.CSS_SELECTOR, selector)
-                    badge_text = badge.text.upper()
+                    badge_text = badge.text.strip().upper()
 
                     if "LIVE" in badge_text or "라이브" in badge_text:
                         return "ongoing"
                     elif "예정" in badge_text or "UPCOMING" in badge_text:
                         return "upcoming"
-                    elif "종료" in badge_text or "ENDED" in badge_text:
+                    elif "다시보기" in badge_text or "REPLAY" in badge_text or "종료" in badge_text or "ENDED" in badge_text:
                         return "ended"
                 except:
                     continue
