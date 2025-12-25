@@ -1,0 +1,38 @@
+services:
+  # Backend API Server
+  - type: web
+    name: ai-cs-backend
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: ./scripts/render-build.sh
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+    healthCheckPath: /health
+
+  # Frontend (Static Site or Web Service)
+  - type: web
+    name: ai-cs-frontend
+    env: static
+    region: oregon
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://ai-cs-backend.onrender.com/api

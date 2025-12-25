@@ -46,6 +46,7 @@ import {
   Settings as SettingsIcon,
   Storefront as StorefrontIcon,
   BusinessCenter as BusinessCenterIcon,
+  TravelExplore as CrawlerIcon,
 } from '@mui/icons-material';
 
 // 다크 테마 색상 팔레트 (대시보드와 동일)
@@ -125,6 +126,11 @@ const AdminPanel = () => {
     code: '',
     name: '',
   });
+
+  // 크롤러 상태
+  const [crawlerUrl, setCrawlerUrl] = useState('');
+  const [crawling, setCrawling] = useState(false);
+  const [crawlerResult, setCrawlerResult] = useState(null);
 
   // 데이터 로드
   useEffect(() => {
@@ -360,6 +366,62 @@ const AdminPanel = () => {
     setSnackbarOpen(true);
   };
 
+  // 크롤러 실행
+  const handleCrawl = async () => {
+    if (!crawlerUrl.trim()) {
+      showSnackbar('URL을 입력해주세요.', 'error');
+      return;
+    }
+
+    // URL 형식 검증
+    const urlPattern = /^https:\/\/view\.shoppinglive\.naver\.com\/(replays|lives|shortclips)\/\d+/;
+    if (!urlPattern.test(crawlerUrl)) {
+      showSnackbar('올바른 네이버 쇼핑라이브 URL을 입력해주세요.', 'error');
+      return;
+    }
+
+    setCrawling(true);
+    setCrawlerResult(null);
+
+    try {
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+      console.log('Calling crawler API:', `${apiBaseUrl}/crawler/crawl`);
+
+      const response = await fetch(`${apiBaseUrl}/crawler/crawl`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: crawlerUrl,
+          saveToDb: true,  // Database dependencies now installed
+        }),
+      });
+
+      console.log('Response status:', response.status);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Crawler result:', result);
+
+      if (result.success) {
+        setCrawlerResult(result.data.summary);
+        showSnackbar('크롤링이 완료되었습니다!', 'success');
+      } else {
+        showSnackbar(`크롤링 실패: ${result.error || '알 수 없는 오류'}`, 'error');
+        console.error('Crawler error:', result);
+      }
+    } catch (error) {
+      console.error('Crawler exception:', error);
+      showSnackbar(`크롤링 중 오류가 발생했습니다: ${error.message}`, 'error');
+    } finally {
+      setCrawling(false);
+    }
+  };
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: DARK_COLORS.background, pb: 6 }}>
       <Container maxWidth="xl" sx={{ pt: 4 }}>
@@ -390,7 +452,7 @@ const AdminPanel = () => {
               letterSpacing: '0.02em',
             }}
           >
-            Live 방송 플랫폼 및 브랜드 관리
+            Live 방송 플랫폼, 브랜드 관리 및 크롤러
           </Typography>
         </Box>
 
@@ -430,6 +492,11 @@ const AdminPanel = () => {
               icon={<BusinessCenterIcon sx={{ mr: 1 }} />}
               iconPosition="start"
               label="브랜드 관리"
+            />
+            <Tab
+              icon={<CrawlerIcon sx={{ mr: 1 }} />}
+              iconPosition="start"
+              label="크롤러"
             />
           </Tabs>
         </Paper>
@@ -818,6 +885,333 @@ const AdminPanel = () => {
                 </TableBody>
               </Table>
             </TableContainer>
+          </Paper>
+        )}
+
+        {/* 크롤러 탭 */}
+        {tabValue === 2 && (
+          <Paper
+            sx={{
+              p: 4,
+              bgcolor: DARK_COLORS.cardBg,
+              border: `1px solid ${DARK_COLORS.border}`,
+              borderRadius: 3,
+              boxShadow: '0 4px 24px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <Box mb={3}>
+              <Typography
+                variant="h5"
+                sx={{
+                  color: DARK_COLORS.text.primary,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  mb: 1,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 4,
+                    height: 28,
+                    bgcolor: DARK_COLORS.info,
+                    borderRadius: 2,
+                  }}
+                />
+                네이버 쇼핑라이브 크롤러
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: DARK_COLORS.text.secondary,
+                  ml: 4,
+                }}
+              >
+                URL을 입력하면 자동으로 방송 데이터를 수집하여 데이터베이스에 저장합니다.
+              </Typography>
+            </Box>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="네이버 쇼핑라이브 URL"
+                  value={crawlerUrl}
+                  onChange={(e) => setCrawlerUrl(e.target.value)}
+                  placeholder="https://view.shoppinglive.naver.com/replays/1776510"
+                  disabled={crawling}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: DARK_COLORS.text.primary,
+                      bgcolor: DARK_COLORS.background,
+                      '& fieldset': {
+                        borderColor: DARK_COLORS.border,
+                      },
+                      '&:hover fieldset': {
+                        borderColor: DARK_COLORS.info,
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: DARK_COLORS.info,
+                      },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: DARK_COLORS.text.secondary,
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': {
+                      color: DARK_COLORS.info,
+                    },
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box display="flex" gap={2}>
+                  <Button
+                    variant="contained"
+                    onClick={handleCrawl}
+                    disabled={crawling}
+                    sx={{
+                      bgcolor: DARK_COLORS.info,
+                      color: DARK_COLORS.text.primary,
+                      fontWeight: 600,
+                      px: 4,
+                      '&:hover': {
+                        bgcolor: alpha(DARK_COLORS.info, 0.8),
+                        boxShadow: `0 8px 24px ${alpha(DARK_COLORS.info, 0.4)}`,
+                      },
+                      '&:disabled': {
+                        bgcolor: DARK_COLORS.border,
+                        color: DARK_COLORS.text.disabled,
+                      },
+                    }}
+                  >
+                    {crawling ? '크롤링 중...' : '크롤링 시작'}
+                  </Button>
+
+                  {crawlerUrl && !crawling && (
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setCrawlerUrl('');
+                        setCrawlerResult(null);
+                      }}
+                      sx={{
+                        borderColor: DARK_COLORS.border,
+                        color: DARK_COLORS.text.secondary,
+                        '&:hover': {
+                          borderColor: DARK_COLORS.text.secondary,
+                          bgcolor: alpha(DARK_COLORS.text.disabled, 0.05),
+                        },
+                      }}
+                    >
+                      초기화
+                    </Button>
+                  )}
+                </Box>
+              </Grid>
+
+              {crawling && (
+                <Grid item xs={12}>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      bgcolor: alpha(DARK_COLORS.info, 0.05),
+                      border: `1px solid ${alpha(DARK_COLORS.info, 0.2)}`,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Box
+                        sx={{
+                          width: 20,
+                          height: 20,
+                          border: `3px solid ${DARK_COLORS.info}`,
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite',
+                          '@keyframes spin': {
+                            '0%': { transform: 'rotate(0deg)' },
+                            '100%': { transform: 'rotate(360deg)' },
+                          },
+                        }}
+                      />
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          color: DARK_COLORS.text.primary,
+                          fontWeight: 500,
+                        }}
+                      >
+                        크롤링 진행 중... 잠시만 기다려주세요.
+                      </Typography>
+                    </Box>
+                  </Paper>
+                </Grid>
+              )}
+
+              {crawlerResult && !crawling && (
+                <Grid item xs={12}>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      bgcolor: alpha(DARK_COLORS.success, 0.05),
+                      border: `1px solid ${alpha(DARK_COLORS.success, 0.2)}`,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        color: DARK_COLORS.success,
+                        fontWeight: 700,
+                        mb: 2,
+                      }}
+                    >
+                      크롤링 완료
+                    </Typography>
+
+                    <Grid container spacing={2}>
+                      {crawlerResult.broadcastId && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Box>
+                            <Typography
+                              variant="body2"
+                              sx={{ color: DARK_COLORS.text.secondary, mb: 0.5 }}
+                            >
+                              방송 ID
+                            </Typography>
+                            <Typography
+                              variant="h6"
+                              sx={{ color: DARK_COLORS.text.primary, fontWeight: 600 }}
+                            >
+                              {crawlerResult.broadcastId}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      )}
+
+                      {crawlerResult.urlType && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Box>
+                            <Typography
+                              variant="body2"
+                              sx={{ color: DARK_COLORS.text.secondary, mb: 0.5 }}
+                            >
+                              유형
+                            </Typography>
+                            <Chip
+                              label={crawlerResult.urlType}
+                              size="small"
+                              sx={{
+                                bgcolor: alpha(DARK_COLORS.info, 0.15),
+                                color: DARK_COLORS.info,
+                                fontWeight: 600,
+                              }}
+                            />
+                          </Box>
+                        </Grid>
+                      )}
+
+                      <Grid item xs={12} sm={6} md={2}>
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            sx={{ color: DARK_COLORS.text.secondary, mb: 0.5 }}
+                          >
+                            상품
+                          </Typography>
+                          <Typography
+                            variant="h6"
+                            sx={{ color: DARK_COLORS.text.primary, fontWeight: 600 }}
+                          >
+                            {crawlerResult.products || 0}개
+                          </Typography>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} sm={6} md={2}>
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            sx={{ color: DARK_COLORS.text.secondary, mb: 0.5 }}
+                          >
+                            쿠폰
+                          </Typography>
+                          <Typography
+                            variant="h6"
+                            sx={{ color: DARK_COLORS.text.primary, fontWeight: 600 }}
+                          >
+                            {crawlerResult.coupons || 0}개
+                          </Typography>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} sm={6} md={2}>
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            sx={{ color: DARK_COLORS.text.secondary, mb: 0.5 }}
+                          >
+                            혜택
+                          </Typography>
+                          <Typography
+                            variant="h6"
+                            sx={{ color: DARK_COLORS.text.primary, fontWeight: 600 }}
+                          >
+                            {crawlerResult.benefits || 0}개
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Grid>
+              )}
+
+              <Grid item xs={12}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    bgcolor: alpha(DARK_COLORS.warning, 0.05),
+                    border: `1px solid ${alpha(DARK_COLORS.warning, 0.2)}`,
+                    borderRadius: 2,
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: DARK_COLORS.text.secondary,
+                      fontWeight: 500,
+                    }}
+                  >
+                    <strong>지원 URL 형식:</strong>
+                  </Typography>
+                  <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+                    <Typography
+                      component="li"
+                      variant="body2"
+                      sx={{ color: DARK_COLORS.text.secondary }}
+                    >
+                      Replays: https://view.shoppinglive.naver.com/replays/[ID]
+                    </Typography>
+                    <Typography
+                      component="li"
+                      variant="body2"
+                      sx={{ color: DARK_COLORS.text.secondary }}
+                    >
+                      Lives: https://view.shoppinglive.naver.com/lives/[ID]
+                    </Typography>
+                    <Typography
+                      component="li"
+                      variant="body2"
+                      sx={{ color: DARK_COLORS.text.secondary }}
+                    >
+                      Short Clips: https://view.shoppinglive.naver.com/shortclips/[ID]
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
           </Paper>
         )}
 

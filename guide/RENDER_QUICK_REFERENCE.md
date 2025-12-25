@@ -39,7 +39,7 @@ Instance Type:     Free
 ```bash
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=postgresql://postgres:[PASSWORD]@db.yxndlrlwrcuikedvpkrj.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:qB5vnHLgMf2hNQKD@db.yxndlrlwrcuikedvpkrj.supabase.co:5432/postgres
 DB_HOST=db.yxndlrlwrcuikedvpkrj.supabase.co
 DB_PORT=5432
 DB_NAME=postgres

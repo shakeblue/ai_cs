@@ -25,6 +25,12 @@ const adminRoutes = require('./routes/adminRoutes');
 const broadcastRoutes = require('./routes/broadcastRoutes');
 const livebridgeRoutes = require('./routes/livebridgeRoutes');
 const naverSmartstoreRoutes = require('../cj/naver_smartstore_routes');
+const crawlerRoutes = require('./routes/crawlerRoutes');
+const platformRoutes = require('./routes/platformRoutes');
+const brandRoutes = require('./routes/brandRoutes');
+const configRoutes = require('./routes/configRoutes');
+const executionRoutes = require('./routes/executionRoutes');
+const scheduledEventRoutes = require('./routes/scheduledEventRoutes');
 
 // Express 앱 생성
 const app = express();
@@ -118,7 +124,8 @@ app.get('/', (p_req, p_res) => {
       broadcastDetail: '/api/broadcasts/:id',
       livebridge: '/api/livebridge',
       livebridgeDetail: '/api/livebridge/:id',
-      naverSmartstore: '/api/naver-smartstore-events'
+      naverSmartstore: '/api/naver-smartstore-events',
+      crawler: '/api/crawler/crawl'
     },
     note: '프론트엔드는 http://localhost:3000 에서 실행됩니다.'
   });
@@ -143,6 +150,12 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/broadcasts', broadcastRoutes);  // 방송 데이터 API
 app.use('/api/livebridge', livebridgeRoutes);  // 라이브브릿지 프로모션 데이터 API
 app.use('/api/naver-smartstore-events', naverSmartstoreRoutes);  // 네이버 스마트스토어 이벤트
+app.use('/api/crawler', crawlerRoutes);  // 크롤러 트리거 API
+app.use('/api/platforms', platformRoutes);  // 플랫폼 관리 API
+app.use('/api/brands', brandRoutes);  // 브랜드 관리 API
+app.use('/api/config', configRoutes);  // 설정 관리 API
+app.use('/api/executions', executionRoutes);  // 크롤러 실행 로그 API
+app.use('/api/scheduled-events', scheduledEventRoutes);  // 스케줄 크롤러 이벤트 API
 
 // 404 핸들러
 app.use((p_req, p_res) => {
