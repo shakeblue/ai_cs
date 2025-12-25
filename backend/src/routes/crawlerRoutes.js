@@ -12,7 +12,12 @@ const logger = require('../config/logger');
 // Path to Python crawler script and virtual environment
 const CRAWLER_DIR = path.join(__dirname, '../../../crawler/cj');
 const CRAWLER_SCRIPT = path.join(CRAWLER_DIR, 'naver_broadcast_crawler.py');
-const PYTHON_CMD = path.join(CRAWLER_DIR, 'venv/bin/python');
+
+// Use environment variable for Python path or fall back to venv/system python
+const PYTHON_CMD = process.env.PYTHON_PATH ||
+                   (require('fs').existsSync(path.join(CRAWLER_DIR, 'venv/bin/python'))
+                     ? path.join(CRAWLER_DIR, 'venv/bin/python')
+                     : 'python3');
 
 /**
  * POST /api/crawler/crawl
@@ -55,7 +60,8 @@ router.post('/crawl', async (req, res) => {
       cwd: path.dirname(CRAWLER_SCRIPT),
       env: {
         ...process.env,
-        PLAYWRIGHT_BROWSERS_PATH: '/home/long/.cache/ms-playwright'
+        // Use environment variable or fall back to local path
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || '/home/long/.cache/ms-playwright'
       }
     });
 
