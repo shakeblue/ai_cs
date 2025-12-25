@@ -12,6 +12,10 @@ on:
         description: 'Maximum number of broadcasts to crawl'
         required: false
         default: '50'
+      concurrency:
+        description: 'Number of parallel crawlers (5-10 recommended)'
+        required: false
+        default: '10'
       verbose:
         description: 'Enable verbose logging'
         required: false
@@ -53,19 +57,21 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
-      - name: Run standalone crawler for Amorepacific
+      - name: Run optimized standalone crawler for Amorepacific
         working-directory: crawler/cj
         run: |
           LIMIT="${{ github.event.inputs.limit || '50' }}"
+          CONCURRENCY="${{ github.event.inputs.concurrency || '10' }}"
           VERBOSE_FLAG=""
           if [ "${{ github.event.inputs.verbose }}" = "true" ] || [ -z "${{ github.event.inputs.verbose }}" ]; then
             VERBOSE_FLAG="--verbose"
           fi
 
-          python standalone_crawler.py \
+          python standalone_crawler_optimized.py \
             --brand-name "Amorepacific" \
             --trigger scheduled \
             --limit "$LIMIT" \
+            --concurrency "$CONCURRENCY" \
             $VERBOSE_FLAG
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

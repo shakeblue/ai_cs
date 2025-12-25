@@ -44,8 +44,13 @@ class ReplaysCrawler(BaseCrawler):
         await self.page.goto(url, wait_until='networkidle')
         logger.info("Page loaded, waiting for APIs...")
 
-        # Wait longer for late-loading APIs (coupons, benefits, comments) and for async response handlers to complete
-        await asyncio.sleep(30)
+        # Optimization #3: Smart wait for required APIs instead of fixed 30s
+        # Wait for main broadcast API first (required)
+        await api_extractor.wait_for_required_apis(['broadcast'], max_wait=10.0)
+
+        # Give additional time for optional APIs (coupons, benefits, comments)
+        # These are not critical, so we use a shorter timeout
+        await asyncio.sleep(5)  # Reduced from 30s to 5s
 
         # Check what APIs were captured
         captured_apis = api_extractor.get_captured_apis()

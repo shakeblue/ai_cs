@@ -45,8 +45,9 @@ class LivesCrawler(BaseCrawler):
         await self.page.goto(url, wait_until='domcontentloaded')
         logger.info("Page loaded, extracting data...")
 
-        # Wait for APIs to load (coupons, benefits, comments)
-        await asyncio.sleep(30)
+        # Optimization #3: Smart wait for optional APIs (lives use embedded JSON for main data)
+        # Give time for optional APIs (coupons, benefits, comments) but reduced timeout
+        await asyncio.sleep(5)  # Reduced from 30s to 5s
 
         # Check what APIs were captured
         captured_apis = api_extractor.get_captured_apis()

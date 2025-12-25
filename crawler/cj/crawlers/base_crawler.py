@@ -20,17 +20,20 @@ class BaseCrawler(ABC):
 
     CRAWLER_VERSION = "1.0.0"
 
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = True, external_context=None):
         """
         Initialize BaseCrawler
 
         Args:
             headless: Whether to run browser in headless mode
+            external_context: Optional external browser context from pool (for optimization)
         """
         self.headless = headless
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
         self.playwright = None
+        self.external_context = external_context  # Context provided by browser pool
+        self.owns_browser = external_context is None  # Track if we own the browser lifecycle
 
     @abstractmethod
     async def extract_data(self, url: str) -> Dict[str, Any]:
@@ -109,7 +112,16 @@ class BaseCrawler(ABC):
             await self._close_browser()
 
     async def _launch_browser(self):
-        """Launch Playwright browser"""
+        """Launch Playwright browser or use external context from pool"""
+
+        # If external context provided (from browser pool), use it
+        if self.external_context:
+            logger.info("Using external browser context from pool")
+            self.page = await self.external_context.new_page()
+            logger.info("Page created from external context")
+            return
+
+        # Otherwise, launch our own browser
         logger.info(f"Launching browser in {'headless' if self.headless else 'headful'} mode")
 
         self.playwright = await async_playwright().start()
@@ -127,15 +139,23 @@ class BaseCrawler(ABC):
         logger.info("Browser launched successfully")
 
     async def _close_browser(self):
-        """Close Playwright browser"""
+        """Close Playwright browser (only if we own it)"""
+
+        # Always close the page
         if self.page:
             await self.page.close()
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+            logger.info("Page closed")
 
-        logger.info("Browser closed")
+        # Only close browser/playwright if we own them (not using external context)
+        if self.owns_browser:
+            if self.browser:
+                await self.browser.close()
+                logger.info("Browser closed")
+            if self.playwright:
+                await self.playwright.stop()
+                logger.info("Playwright stopped")
+        else:
+            logger.info("Using external context - browser will be managed by pool")
 
     def _build_result(self, source_url: str, broadcast_data: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -197,3 +197,83 @@ class APIExtractor:
             List of API names
         """
         return list(self.api_data.keys())
+
+    async def wait_for_required_apis(
+        self,
+        required_apis: List[str],
+        max_wait: float = 30.0,
+        check_interval: float = 0.5
+    ) -> bool:
+        """
+        Smart wait for required APIs to be captured
+        Optimization #3: Instead of fixed 30s wait, check if APIs are ready
+
+        Args:
+            required_apis: List of required API keys (e.g., ['broadcast', 'coupons'])
+            max_wait: Maximum time to wait in seconds (default: 30)
+            check_interval: How often to check in seconds (default: 0.5)
+
+        Returns:
+            True if all required APIs captured, False if timeout
+
+        Example:
+            >>> await api_extractor.wait_for_required_apis(['broadcast', 'coupons'], max_wait=30)
+        """
+        elapsed = 0.0
+        start_time = asyncio.get_event_loop().time()
+
+        logger.info(f"Waiting for required APIs: {required_apis} (max {max_wait}s)")
+
+        while elapsed < max_wait:
+            # Check if all required APIs are captured
+            captured = self.get_captured_apis()
+            missing = [api for api in required_apis if api not in captured]
+
+            if not missing:
+                logger.info(f"✓ All required APIs captured in {elapsed:.1f}s: {captured}")
+                return True
+
+            # Log progress
+            if elapsed > 0 and int(elapsed) % 5 == 0:
+                logger.info(f"Still waiting for: {missing} (elapsed: {elapsed:.1f}s)")
+
+            # Wait and check again
+            await asyncio.sleep(check_interval)
+            elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Timeout
+        captured = self.get_captured_apis()
+        missing = [api for api in required_apis if api not in captured]
+        logger.warning(
+            f"Timeout after {max_wait}s. Captured: {captured}, Missing: {missing}"
+        )
+        return False
+
+    async def wait_for_any_data(
+        self,
+        max_wait: float = 10.0,
+        check_interval: float = 0.5
+    ) -> bool:
+        """
+        Wait for at least some API data to be captured
+
+        Args:
+            max_wait: Maximum time to wait in seconds
+            check_interval: How often to check in seconds
+
+        Returns:
+            True if any data captured, False if timeout
+        """
+        elapsed = 0.0
+        start_time = asyncio.get_event_loop().time()
+
+        while elapsed < max_wait:
+            if self.has_data():
+                logger.info(f"✓ API data captured in {elapsed:.1f}s")
+                return True
+
+            await asyncio.sleep(check_interval)
+            elapsed = asyncio.get_event_loop().time() - start_time
+
+        logger.warning(f"No API data captured after {max_wait}s")
+        return False
