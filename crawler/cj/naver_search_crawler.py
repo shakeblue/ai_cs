@@ -19,10 +19,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Configure logging
 logging.basicConfig(
@@ -45,14 +47,18 @@ class NaverSearchCrawler:
         """Setup Selenium WebDriver"""
         options = webdriver.ChromeOptions()
         if self.headless:
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')  # Use new headless mode
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--remote-debugging-port=9222')
 
-        self.driver = webdriver.Chrome(options=options)
+        # Use system ChromeDriver (already installed at /usr/bin/chromedriver)
+        service = Service('/usr/bin/chromedriver')
+        self.driver = webdriver.Chrome(service=service, options=options)
         self.driver.implicitly_wait(10)
 
     def close_driver(self):
