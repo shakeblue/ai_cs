@@ -1,0 +1,79 @@
+name: Crawl Test Brand
+
+on:
+  # Schedule: Run every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'  # At minute 0 past every 6th hour
+
+  # Manual trigger via GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      brand_name:
+        description: 'Brand name to crawl (optional, defaults to test brand)'
+        required: false
+        default: ''
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Fail if crawler takes more than 15 minutes
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'crawler/cj/requirements.txt'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-chromedriver
+
+      - name: Install Python dependencies
+        working-directory: crawler/cj
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run standalone crawler
+        working-directory: crawler/cj
+        run: |
+          # Use brand from workflow input or default brand name
+          BRAND_NAME="${{ github.event.inputs.brand_name }}"
+          if [ -z "$BRAND_NAME" ]; then
+            # TODO: Replace with your actual test brand name from database
+            BRAND_NAME="TestBrand"
+          fi
+
+          python standalone_crawler.py \
+            --brand-name "$BRAND_NAME" \
+            --trigger scheduled \
+            --limit 50 \
+            --verbose
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Upload execution logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawler-logs-${{ github.run_number }}
+          path: |
+            crawler/cj/*.log
+            crawler/cj/debug_*.html
+          retention-days: 7

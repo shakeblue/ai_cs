@@ -1,0 +1,88 @@
+name: Crawl Innisfree (이니스프리)
+
+on:
+  # Schedule: Run every 12 hours (medium frequency)
+  schedule:
+    - cron: '0 */12 * * *'  # At minute 0 past every 12th hour (UTC)
+
+  # Manual trigger via GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maximum number of broadcasts to crawl'
+        required: false
+        default: '30'
+      verbose:
+        description: 'Enable verbose logging'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'crawler/cj/requirements.txt'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            chromium-browser \
+            chromium-chromedriver \
+            fonts-noto-cjk
+
+      - name: Install Python dependencies
+        working-directory: crawler/cj
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run standalone crawler for Innisfree
+        working-directory: crawler/cj
+        run: |
+          LIMIT="${{ github.event.inputs.limit || '30' }}"
+          VERBOSE_FLAG=""
+          if [ "${{ github.event.inputs.verbose }}" = "true" ] || [ -z "${{ github.event.inputs.verbose }}" ]; then
+            VERBOSE_FLAG="--verbose"
+          fi
+
+          python standalone_crawler.py \
+            --brand-name "Innisfree" \
+            --trigger scheduled \
+            --limit "$LIMIT" \
+            $VERBOSE_FLAG
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+      - name: Upload execution logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawler-logs-innisfree-${{ github.run_number }}
+          path: |
+            crawler/cj/*.log
+            crawler/cj/debug_*.html
+            crawler/cj/output/*.json
+          retention-days: 7
+          if-no-files-found: ignore
