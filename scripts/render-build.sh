@@ -29,7 +29,19 @@ $VENV_PATH/bin/pip install -r requirements.txt
 echo "Installing Playwright browsers to $PLAYWRIGHT_BROWSERS_PATH..."
 $VENV_PATH/bin/playwright install chromium
 
-echo "Python packages installed successfully!"
+echo ""
+echo "=== Verifying Installation ==="
 echo "Python path: $VENV_PATH/bin/python"
+echo "Python version:"
+$VENV_PATH/bin/python --version
 
+echo ""
+echo "Installed packages:"
+$VENV_PATH/bin/pip list | grep -E "(playwright|supabase|beautifulsoup4)" || echo "Warning: Some packages may not be installed"
+
+echo ""
+echo "Testing Playwright import:"
+$VENV_PATH/bin/python -c "from playwright.async_api import async_playwright; print('✓ Playwright imported successfully')" || echo "✗ Playwright import failed!"
+
+echo ""
 echo "=== Build completed successfully ==="

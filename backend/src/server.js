@@ -31,6 +31,7 @@ const brandRoutes = require('./routes/brandRoutes');
 const configRoutes = require('./routes/configRoutes');
 const executionRoutes = require('./routes/executionRoutes');
 const scheduledEventRoutes = require('./routes/scheduledEventRoutes');
+const triggerRoutes = require('./routes/triggerRoutes');
 
 // Express 앱 생성
 const app = express();
@@ -156,6 +157,7 @@ app.use('/api/brands', brandRoutes);  // 브랜드 관리 API
 app.use('/api/config', configRoutes);  // 설정 관리 API
 app.use('/api/executions', executionRoutes);  // 크롤러 실행 로그 API
 app.use('/api/scheduled-events', scheduledEventRoutes);  // 스케줄 크롤러 이벤트 API
+app.use('/api/trigger', triggerRoutes);  // 수동 크롤러 트리거 API
 
 // 404 핸들러
 app.use((p_req, p_res) => {

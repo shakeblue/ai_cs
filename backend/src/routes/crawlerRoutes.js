@@ -13,11 +13,18 @@ const logger = require('../config/logger');
 const CRAWLER_DIR = path.join(__dirname, '../../../crawler/cj');
 const CRAWLER_SCRIPT = path.join(CRAWLER_DIR, 'naver_broadcast_crawler.py');
 
-// Use environment variable for Python path or fall back to venv/system python
-const PYTHON_CMD = process.env.PYTHON_PATH ||
-                   (require('fs').existsSync(path.join(CRAWLER_DIR, 'venv/bin/python'))
-                     ? path.join(CRAWLER_DIR, 'venv/bin/python')
-                     : 'python3');
+// Determine Python command
+let PYTHON_CMD;
+if (process.env.PYTHON_PATH) {
+  // Use environment variable if set (production)
+  PYTHON_CMD = process.env.PYTHON_PATH;
+  logger.info(`Using Python from env: ${PYTHON_CMD}`);
+} else {
+  // Development fallback
+  const venvPython = path.join(CRAWLER_DIR, 'venv/bin/python');
+  PYTHON_CMD = require('fs').existsSync(venvPython) ? venvPython : 'python3';
+  logger.info(`Using Python: ${PYTHON_CMD}`);
+}
 
 /**
  * POST /api/crawler/crawl
