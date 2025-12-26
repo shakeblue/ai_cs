@@ -18,6 +18,7 @@ class APIExtractor:
     def __init__(self):
         """Initialize APIExtractor"""
         self.api_data: Dict[str, Any] = {}
+        self.products_list: List[Any] = []  # Accumulate products from all API calls
         self.response_lock = asyncio.Lock()
 
     async def setup_interception(self, page):
@@ -87,7 +88,8 @@ class APIExtractor:
             '/broadcast-benefits',
             '/shopping-app/benefit',
             '/coupons',
-            '/replays/comments'
+            '/replays/comments',
+            '/products'  # Products API (paginated)
         ]
 
         return any(pattern in url for pattern in target_patterns)
@@ -130,6 +132,16 @@ class APIExtractor:
             self.api_data['shortclip'] = body
             logger.info(f"✓ Stored shortclip API data from {url}")
 
+        # Products API: /v1/broadcast/{id}/products (paginated)
+        elif '/products' in url and '/broadcast/' in url and '/categories' not in url:
+            # Extract products from response (structure: {list: [...], page: 0, totalCount: 91, totalPage: 4})
+            products = body.get('list', []) if isinstance(body, dict) else []
+            total_count = body.get('totalCount', 0) if isinstance(body, dict) else 0
+            page = body.get('page', '?') if isinstance(body, dict) else '?'
+            if products:
+                self.products_list.extend(products)
+                logger.info(f"✓ Captured {len(products)} products from page {page} (total captured: {len(self.products_list)}/{total_count})")
+
     def get_broadcast_data(self) -> Optional[Dict[str, Any]]:
         """
         Get main broadcast data from API
@@ -161,6 +173,15 @@ class APIExtractor:
         if isinstance(benefits_data, list):
             return benefits_data
         return []
+
+    def get_products(self) -> List[Dict[str, Any]]:
+        """
+        Get all products from intercepted API calls (aggregated from all pages)
+
+        Returns:
+            List of product dicts from all paginated API calls
+        """
+        return self.products_list
 
     def get_comments(self) -> List[Dict[str, Any]]:
         """

@@ -5,7 +5,7 @@ Crawler for /shortclips/ URLs using hybrid approach (JSON or API)
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from crawlers.base_crawler import BaseCrawler
 from extractors.json_extractor import JSONExtractor
@@ -293,3 +293,100 @@ class ShortClipsCrawler(BaseCrawler):
             })
 
         return extracted_products
+
+    async def _extract_products_from_dom(self) -> List[Dict[str, Any]]:
+        """
+        Extract ALL products from DOM (fallback when JSON/API have limits)
+
+        Returns:
+            List of product dicts extracted from DOM
+        """
+        try:
+            logger.info("Extracting products from DOM...")
+            await asyncio.sleep(3)
+
+            # Try clicking product tab
+            try:
+                product_triggers = ['#wa_product_modal_tab', 'button:has-text("상품")', 'text=상품']
+                for trigger in product_triggers:
+                    try:
+                        element = await self.page.wait_for_selector(trigger, timeout=2000, state='visible')
+                        if element:
+                            await element.click()
+                            logger.info(f"✓ Clicked product tab: {trigger}")
+                            await asyncio.sleep(3)
+                            break
+                    except:
+                        continue
+            except:
+                pass
+
+            # Wait for products
+            try:
+                await self.page.wait_for_selector('[class*="ProductList_item"]', timeout=10000, state='attached')
+                logger.info("✓ Product elements detected in DOM")
+            except:
+                logger.warning("Product elements not found in DOM")
+                return []
+
+            await asyncio.sleep(2)
+
+            # Scroll to load all
+            await self.page.evaluate("""
+                async () => {
+                    const panel = document.querySelector('#wa_product_modal_tabpanel') || document.body;
+                    for (let i = 0; i < 10; i++) {
+                        panel.scrollTop = panel.scrollHeight;
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+                }
+            """)
+
+            await asyncio.sleep(1)
+
+            # Extract products
+            result = await self.page.evaluate("""
+                () => {
+                    let elements = document.querySelectorAll('[class*="ProductList_item"]');
+                    const products = [];
+
+                    elements.forEach((el) => {
+                        try {
+                            const nameEl = el.querySelector('[class*="ProductTitle"]');
+                            const discountEl = el.querySelector('[class*="DiscountPrice_discount"]');
+                            const priceEl = el.querySelector('[class*="DiscountPrice_price"]');
+                            const imgEl = el.querySelector('img');
+                            const linkEl = el.querySelector('a');
+
+                            const name = nameEl?.textContent?.trim();
+                            const link = linkEl?.href;
+
+                            if (name && link) {
+                                const productId = link.match(/channelProductNo=(\\d+)/)?.[1];
+                                const discountRate = parseInt(discountEl?.textContent?.replace(/[^0-9]/g, '') || '0') || null;
+                                const price = parseInt(priceEl?.textContent?.replace(/[^0-9]/g, '') || '0') || null;
+                                const originalPrice = (price && discountRate) ? Math.round(price / (1 - discountRate / 100)) : null;
+
+                                products.push({
+                                    product_id: productId,
+                                    name: name,
+                                    link: link,
+                                    image: imgEl?.src,
+                                    discounted_price: price,
+                                    discount_rate: discountRate,
+                                    original_price: originalPrice
+                                });
+                            }
+                        } catch (err) {}
+                    });
+
+                    return products;
+                }
+            """)
+
+            logger.info(f"✓ Extracted {len(result)} products from DOM")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to extract products from DOM: {e}")
+            return []

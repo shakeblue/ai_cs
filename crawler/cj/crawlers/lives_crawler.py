@@ -5,7 +5,7 @@ Crawler for /lives/ URLs using hybrid approach (embedded JSON + API interception
 
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from crawlers.base_crawler import BaseCrawler
 from extractors.json_extractor import JSONExtractor
@@ -69,6 +69,39 @@ class LivesCrawler(BaseCrawler):
 
         # Extract broadcast fields from JSON
         broadcast_data = self._extract_broadcast_fields(json_data)
+
+        # Extract products: Try multiple sources (API > DOM > JSON)
+        json_products = broadcast_data.get('products', [])
+        total_product_count = json_data.get('productCount', len(json_products))
+
+        if total_product_count > len(json_products):
+            logger.info(f"JSON has {len(json_products)}/{total_product_count} products - extracting from DOM...")
+            dom_products = await self._extract_products_from_dom()
+
+            # Check if API extractor captured products from API calls
+            api_products_raw = api_extractor.get_products()
+            api_products = self._extract_products(api_products_raw) if api_products_raw else []
+
+            # Use the source with the most products
+            if api_products and len(api_products) >= len(dom_products) and len(api_products) >= len(json_products):
+                logger.info(f"✓ API extraction successful: {len(api_products)} products (DOM: {len(dom_products)}, JSON: {len(json_products)})")
+                broadcast_data['products'] = api_products
+                broadcast_data['products_source'] = 'API'
+            elif len(dom_products) > len(json_products):
+                logger.info(f"✓ DOM extraction successful: {len(dom_products)} products (vs JSON: {len(json_products)}, API: {len(api_products)})")
+                broadcast_data['products'] = dom_products
+                broadcast_data['products_source'] = 'DOM'
+            else:
+                logger.warning(f"DOM extraction got {len(dom_products)} products, using JSON data ({len(json_products)})")
+                broadcast_data['products_source'] = 'JSON'
+                self._add_warning(
+                    warnings,
+                    "products",
+                    f"Only {len(json_products)}/{total_product_count} products available.",
+                    len(json_products)
+                )
+        else:
+            broadcast_data['products_source'] = 'JSON'
 
         # Extract coupons from API (if available)
         coupons = api_extractor.get_coupons()
@@ -148,10 +181,20 @@ class LivesCrawler(BaseCrawler):
         return None
 
     def _extract_products(self, products: list) -> list:
-        """Extract product information"""
+        """Extract product information with deduplication"""
         extracted_products = []
+        seen_ids = set()
 
         for product in products:
+            # Get product ID for deduplication
+            product_id = product.get('key') or product.get('productNo')
+
+            # Skip duplicates
+            if product_id and product_id in seen_ids:
+                continue
+            if product_id:
+                seen_ids.add(product_id)
+
             # Get price information
             discounted_price = product.get('discountedSalePrice') or product.get('price')
             price = product.get('price')
@@ -165,7 +208,7 @@ class LivesCrawler(BaseCrawler):
                 original_price = price
 
             extracted_products.append({
-                'product_id': product.get('key') or product.get('productNo'),
+                'product_id': product_id,
                 'name': product.get('name'),
                 'brand_name': product.get('brandName'),
                 'discount_rate': discount_rate,
@@ -225,3 +268,160 @@ class LivesCrawler(BaseCrawler):
             })
 
         return extracted_comments
+
+    async def _extract_products_from_dom(self) -> List[Dict[str, Any]]:
+        """
+        Extract products from DOM
+
+        Returns:
+            List of product dicts extracted from DOM
+        """
+        try:
+            logger.info("Extracting products from DOM...")
+
+            # Wait for page to fully render
+            await asyncio.sleep(3)
+
+            # Try to click main product tab/button (Korean: 상품)
+            try:
+                product_triggers = [
+                    '#wa_product_modal_tab',
+                    'button#wa_product_modal_tab',
+                    '[id*="product"][role="tab"]',
+                    'button:has-text("상품")',
+                    '[aria-label*="상품"]',
+                    'text=상품'
+                ]
+
+                tab_clicked = False
+                for trigger in product_triggers:
+                    try:
+                        element = await self.page.wait_for_selector(trigger, timeout=2000, state='visible')
+                        if element:
+                            await element.click()
+                            logger.info(f"✓ Clicked main product tab: {trigger}")
+                            await asyncio.sleep(3)
+                            tab_clicked = True
+                            break
+                    except Exception as e:
+                        logger.debug(f"Trigger {trigger} failed: {e}")
+                        continue
+
+                if not tab_clicked:
+                    logger.warning("Could not click main product tab")
+            except Exception as e:
+                logger.warning(f"Exception while clicking main product tab: {e}")
+
+            # Extract from currently visible product panel
+            return await self._extract_from_current_panel()
+
+        except Exception as e:
+            logger.error(f"Failed to extract products from DOM: {e}")
+            return []
+
+    async def _extract_from_current_panel(self) -> List[Dict[str, Any]]:
+        """
+        Extract products from the currently visible product panel
+
+        Returns:
+            List of product dicts
+        """
+        try:
+            # Wait for products to appear
+            try:
+                await self.page.wait_for_selector(
+                    '[class*="ProductList_item"], [class*="ProductListItem_wrap"]',
+                    timeout=5000,
+                    state='attached'
+                )
+            except:
+                logger.debug("No products found in current panel")
+                return []
+
+            await asyncio.sleep(1)
+
+            # Aggressive scrolling to trigger all lazy-loaded products (paginated API)
+            # Products are loaded in pages of 30, so need to scroll enough to trigger all pages
+            await self.page.evaluate("""
+                async () => {
+                    const panel = document.querySelector('#wa_product_modal_tabpanel')
+                               || document.querySelector('[class*="ProductList"]');
+
+                    if (panel) {
+                        let prevCount = 0;
+                        let stableCount = 0;
+
+                        // Scroll up to 50 times or until product count stabilizes
+                        for (let i = 0; i < 50; i++) {
+                            panel.scrollTop = panel.scrollHeight;
+                            await new Promise(resolve => setTimeout(resolve, 400));
+
+                            // Check if product count has stabilized
+                            const currentCount = document.querySelectorAll('[class*="ProductList_item"]').length;
+                            if (currentCount === prevCount) {
+                                stableCount++;
+                                if (stableCount >= 5) {  // Stop if count stable for 5 iterations
+                                    console.log(`Product count stabilized at ${currentCount} after ${i+1} scrolls`);
+                                    break;
+                                }
+                            } else {
+                                stableCount = 0;
+                            }
+                            prevCount = currentCount;
+                        }
+                    }
+                }
+            """)
+
+            await asyncio.sleep(2)
+
+            # Extract products
+            result = await self.page.evaluate("""
+                () => {
+                    let elements = document.querySelectorAll('[class*="ProductList_item"]');
+                    const products = [];
+
+                    elements.forEach((el) => {
+                        try {
+                            const nameEl = el.querySelector('[class*="ProductTitle"]');
+                            const discountEl = el.querySelector('[class*="DiscountPrice_discount"]');
+                            const priceEl = el.querySelector('[class*="DiscountPrice_price"]');
+                            const imgEl = el.querySelector('img');
+                            const linkEl = el.querySelector('a');
+
+                            const name = nameEl?.textContent?.trim();
+                            const link = linkEl?.href;
+
+                            if (name && link) {
+                                let productId = null;
+                                if (link) {
+                                    const match = link.match(/channelProductNo=(\\d+)/);
+                                    productId = match ? match[1] : null;
+                                }
+
+                                const discountRate = parseInt(discountEl?.textContent?.replace(/[^0-9]/g, '') || '') || null;
+                                const price = parseInt(priceEl?.textContent?.replace(/[^0-9]/g, '') || '') || null;
+                                const originalPrice = (price && discountRate) ? Math.round(price / (1 - discountRate / 100)) : null;
+
+                                products.push({
+                                    product_id: productId,
+                                    name: name,
+                                    link: link,
+                                    image: imgEl?.src,
+                                    discounted_price: price,
+                                    discount_rate: discountRate,
+                                    original_price: originalPrice
+                                });
+                            }
+                        } catch (err) {}
+                    });
+
+                    return products;
+                }
+            """)
+
+            return result
+
+        except Exception as e:
+            logger.debug(f"Failed to extract from current panel: {e}")
+            return []
