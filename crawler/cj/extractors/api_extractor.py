@@ -6,6 +6,7 @@ Intercepts and extracts data from API responses during page load
 import asyncio
 import json
 import logging
+import httpx
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -277,3 +278,170 @@ class APIExtractor:
 
         logger.warning(f"No API data captured after {max_wait}s")
         return False
+
+    async def wait_for_optional_apis(
+        self,
+        optional_apis: List[str],
+        max_wait: float = 15.0,
+        min_wait: float = 3.0,
+        check_interval: float = 0.5
+    ) -> List[str]:
+        """
+        Smart wait for optional APIs (not all required to be present)
+        Waits at least min_wait seconds, up to max_wait seconds
+        Returns early if all optional APIs are captured after min_wait
+
+        Args:
+            optional_apis: List of optional API keys (e.g., ['coupons', 'benefits'])
+            max_wait: Maximum time to wait in seconds (default: 15)
+            min_wait: Minimum time to wait in seconds (default: 3)
+            check_interval: How often to check in seconds (default: 0.5)
+
+        Returns:
+            List of APIs that were captured
+
+        Example:
+            >>> captured = await api_extractor.wait_for_optional_apis(
+            ...     ['coupons', 'benefits'],
+            ...     max_wait=15.0,
+            ...     min_wait=3.0
+            ... )
+            >>> print(f"Captured: {captured}")
+        """
+        elapsed = 0.0
+        start_time = asyncio.get_event_loop().time()
+
+        logger.info(
+            f"Waiting for optional APIs: {optional_apis} "
+            f"(min: {min_wait}s, max: {max_wait}s)"
+        )
+
+        while elapsed < max_wait:
+            # Check which optional APIs are captured
+            captured = self.get_captured_apis()
+            captured_optional = [api for api in optional_apis if api in captured]
+            missing = [api for api in optional_apis if api not in captured]
+
+            # If we've waited at least min_wait and all optional APIs are captured, return
+            if elapsed >= min_wait and not missing:
+                logger.info(
+                    f"✓ All optional APIs captured in {elapsed:.1f}s: {captured_optional}"
+                )
+                return captured_optional
+
+            # Log progress every 3 seconds
+            if elapsed > 0 and int(elapsed) % 3 == 0 and elapsed < max_wait - check_interval:
+                if captured_optional:
+                    logger.info(
+                        f"Progress: {len(captured_optional)}/{len(optional_apis)} "
+                        f"APIs captured: {captured_optional} (elapsed: {elapsed:.1f}s)"
+                    )
+                else:
+                    logger.info(f"Still waiting for optional APIs (elapsed: {elapsed:.1f}s)")
+
+            # Wait and check again
+            await asyncio.sleep(check_interval)
+            elapsed = asyncio.get_event_loop().time() - start_time
+
+        # Timeout or completed
+        captured = self.get_captured_apis()
+        captured_optional = [api for api in optional_apis if api in captured]
+        missing = [api for api in optional_apis if api not in captured]
+
+        if captured_optional:
+            logger.info(
+                f"✓ Optional APIs captured ({len(captured_optional)}/{len(optional_apis)}): "
+                f"{captured_optional} after {elapsed:.1f}s"
+            )
+            if missing:
+                logger.info(f"  Missing optional APIs (not critical): {missing}")
+        else:
+            logger.warning(
+                f"No optional APIs captured after {max_wait}s. "
+                f"This is OK if the broadcast has no {'/'.join(optional_apis)}."
+            )
+
+        return captured_optional
+
+    async def fetch_all_comments_paginated(
+        self,
+        broadcast_id: int,
+        page_size: int = 100,
+        keep_odd_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch ALL comments using pagination with direct API calls
+        For demo purposes, keeps only odd-indexed comments (50% of total) to reduce storage
+
+        Args:
+            broadcast_id: The broadcast ID
+            page_size: Number of comments per page (default: 100)
+            keep_odd_only: If True, keeps only odd-indexed comments to save storage (default: True)
+
+        Returns:
+            List of all comments (or 50% if keep_odd_only=True)
+
+        Example:
+            >>> comments = await api_extractor.fetch_all_comments_paginated(1776510, page_size=100)
+        """
+        all_comments = []
+        url = f"https://apis.naver.com/selectiveweb/live_commerce_web/v1/broadcast/{broadcast_id}/replays/comments"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Referer': f'https://view.shoppinglive.naver.com/replays/{broadcast_id}'
+        }
+
+        params = {'size': page_size}
+        page_num = 1
+
+        logger.info(f"Fetching comments with pagination (page_size={page_size}, keep_odd_only={keep_odd_only})...")
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                while True:
+                    # Fetch page
+                    response = await client.get(url, headers=headers, params=params)
+
+                    if response.status_code != 200:
+                        logger.warning(f"Failed to fetch comments page {page_num}: {response.status_code}")
+                        break
+
+                    data = response.json()
+                    comments = data.get('comments', [])
+                    has_next = data.get('hasNext', False)
+
+                    if not comments:
+                        logger.info(f"No more comments on page {page_num}")
+                        break
+
+                    # Add comments to collection
+                    all_comments.extend(comments)
+                    logger.info(f"✓ Page {page_num}: fetched {len(comments)} comments (total: {len(all_comments)})")
+
+                    # Check if there are more pages
+                    if not has_next:
+                        logger.info(f"✓ No more pages (hasNext=False)")
+                        break
+
+                    # Set pagination cursors for next page
+                    params['lastCommentNo'] = data.get('lastCommentNo')
+                    params['lastCreatedAtMilli'] = data.get('lastCreatedAtMilli')
+                    page_num += 1
+
+                    # Safety limit: max 50 pages (5000 comments with page_size=100)
+                    if page_num > 50:
+                        logger.warning(f"Reached safety limit of 50 pages, stopping pagination")
+                        break
+
+        except Exception as e:
+            logger.error(f"Error fetching paginated comments: {e}")
+
+        # Filter to odd indices for storage optimization (demo mode)
+        if keep_odd_only and all_comments:
+            original_count = len(all_comments)
+            # Keep comments at odd indices: 1, 3, 5, 7, ... (roughly 50%)
+            all_comments = [comment for idx, comment in enumerate(all_comments) if idx % 2 == 1]
+            logger.info(f"✓ Filtered to odd indices: {len(all_comments)}/{original_count} comments ({len(all_comments)/original_count*100:.1f}%)")
+
+        logger.info(f"✓ Total comments fetched: {len(all_comments)}")
+        return all_comments

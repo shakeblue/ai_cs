@@ -48,9 +48,14 @@ class ReplaysCrawler(BaseCrawler):
         # Wait for main broadcast API first (required)
         await api_extractor.wait_for_required_apis(['broadcast'], max_wait=10.0)
 
-        # Give additional time for optional APIs (coupons, benefits, comments)
-        # These are not critical, so we use a shorter timeout
-        await asyncio.sleep(5)  # Reduced from 30s to 5s
+        # Wait for optional APIs (coupons, benefits) with smart timeout
+        # These are not critical, but we give them enough time to be captured
+        logger.info("Waiting for optional APIs (coupons, benefits)...")
+        await api_extractor.wait_for_optional_apis(
+            ['coupons', 'benefits'],
+            max_wait=15.0,
+            min_wait=3.0  # Wait at least 3s even if some APIs are captured
+        )
 
         # Check what APIs were captured
         captured_apis = api_extractor.get_captured_apis()
@@ -81,10 +86,15 @@ class ReplaysCrawler(BaseCrawler):
             self._add_warning(warnings, "live_benefits", "No benefits available", [])
             broadcast_data['live_benefits'] = []
 
-        # Extract comments
-        comments = api_extractor.get_comments()
-        if comments:
-            broadcast_data['live_chat'] = self._extract_comments(comments)
+        # Extract comments with pagination (100 per page, keep odd indices for storage optimization)
+        logger.info("Fetching all comments with pagination...")
+        all_comments = await api_extractor.fetch_all_comments_paginated(
+            broadcast_id=broadcast_api_data.get('id'),
+            page_size=100,
+            keep_odd_only=True  # Keep only odd indices (~50%) to reduce DB storage for demo
+        )
+        if all_comments:
+            broadcast_data['live_chat'] = self._extract_comments(all_comments)
         else:
             self._add_warning(warnings, "live_chat", "No comments available", [])
             broadcast_data['live_chat'] = []
