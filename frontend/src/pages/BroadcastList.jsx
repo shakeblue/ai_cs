@@ -23,6 +23,7 @@ import {
 } from '@mui/material';
 import { Search as SearchIcon } from '@mui/icons-material';
 import { useBroadcasts } from '../hooks/useBroadcasts';
+import { useBrands } from '../hooks/useBrands';
 import { useDebounce } from '../hooks/useDebounce';
 import BroadcastCard from '../components/broadcasts/BroadcastCard';
 
@@ -49,6 +50,9 @@ const BroadcastList = () => {
 
   // Debounce search input
   const debouncedSearch = useDebounce(searchInput, 500);
+
+  // Fetch brands
+  const { brands, loading: brandsLoading } = useBrands();
 
   // Fetch broadcasts
   const { broadcasts, loading, error, pagination } = useBroadcasts({
@@ -189,13 +193,18 @@ const BroadcastList = () => {
                 }}
               >
                 <InputLabel>Brand</InputLabel>
-                <Select value={brand} label="Brand" onChange={handleBrandChange}>
+                <Select
+                  value={brand}
+                  label="Brand"
+                  onChange={handleBrandChange}
+                  disabled={brandsLoading}
+                >
                   <MenuItem value="">All Brands</MenuItem>
-                  <MenuItem value="아이오페">아이오페</MenuItem>
-                  <MenuItem value="설화수">설화수</MenuItem>
-                  <MenuItem value="라네즈">라네즈</MenuItem>
-                  <MenuItem value="이니스프리">이니스프리</MenuItem>
-                  <MenuItem value="헤라">헤라</MenuItem>
+                  {brands.map((brandName) => (
+                    <MenuItem key={brandName} value={brandName}>
+                      {brandName}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
 

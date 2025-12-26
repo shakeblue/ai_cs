@@ -366,7 +366,7 @@ async function searchBroadcasts(query, filters = {}) {
       .limit(limit);
 
     if (brand) {
-      searchQuery = searchQuery.eq('brand_name', brand);
+      searchQuery = searchQuery.ilike('brand_name', brand);
     }
 
     const { data, error } = await searchQuery;
