@@ -43,7 +43,6 @@ const BroadcastList = () => {
   const [searchInput, setSearchInput] = useState('');
   const [brand, setBrand] = useState('');
   const [status, setStatus] = useState('');
-  const [broadcastType, setBroadcastType] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sortBy, setSortBy] = useState('date_desc');
@@ -61,7 +60,6 @@ const BroadcastList = () => {
     search: debouncedSearch,
     brand,
     status,
-    broadcastType,
     startDate,
     endDate,
     sortBy,
@@ -79,11 +77,6 @@ const BroadcastList = () => {
 
   const handleStatusChange = (event) => {
     setStatus(event.target.value);
-    setPage(1);
-  };
-
-  const handleBroadcastTypeChange = (event) => {
-    setBroadcastType(event.target.value);
     setPage(1);
   };
 
@@ -106,7 +99,6 @@ const BroadcastList = () => {
     setSearchInput('');
     setBrand('');
     setStatus('');
-    setBroadcastType('');
     setStartDate('');
     setEndDate('');
     setSortBy('date_desc');
@@ -125,7 +117,7 @@ const BroadcastList = () => {
             mb: 1,
           }}
         >
-          Naver Shopping Live Broadcasts
+          네이버 쇼핑 라이브 방송
         </Typography>
         <Typography
           variant="body1"
@@ -134,7 +126,7 @@ const BroadcastList = () => {
             mb: 4,
           }}
         >
-          Browse and search through collected broadcast data
+          수집된 방송 데이터를 검색하고 탐색하세요
         </Typography>
 
         {/* Search and Filters */}
@@ -150,7 +142,7 @@ const BroadcastList = () => {
             {/* Search Bar */}
             <TextField
               fullWidth
-              placeholder="Search broadcasts, brands, or products..."
+              placeholder="방송, 브랜드 또는 상품 검색..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               InputProps={{
@@ -192,17 +184,17 @@ const BroadcastList = () => {
                   },
                 }}
               >
-                <InputLabel>Brand</InputLabel>
+                <InputLabel>브랜드</InputLabel>
                 <Select
                   value={brand}
-                  label="Brand"
+                  label="브랜드"
                   onChange={handleBrandChange}
                   disabled={brandsLoading}
                 >
-                  <MenuItem value="">All Brands</MenuItem>
-                  {brands.map((brandName) => (
-                    <MenuItem key={brandName} value={brandName}>
-                      {brandName}
+                  <MenuItem value="">모든 브랜드</MenuItem>
+                  {brands.map((brandObj) => (
+                    <MenuItem key={brandObj.id} value={brandObj.id}>
+                      {brandObj.name}
                     </MenuItem>
                   ))}
                 </Select>
@@ -224,13 +216,13 @@ const BroadcastList = () => {
                   },
                 }}
               >
-                <InputLabel>Status</InputLabel>
-                <Select value={status} label="Status" onChange={handleStatusChange}>
-                  <MenuItem value="">All Status</MenuItem>
-                  <MenuItem value="ONAIR">On Air</MenuItem>
-                  <MenuItem value="BLOCK">Ended</MenuItem>
-                  <MenuItem value="READY">Scheduled</MenuItem>
-                  <MenuItem value="OPENED">Available</MenuItem>
+                <InputLabel>상태</InputLabel>
+                <Select value={status} label="상태" onChange={handleStatusChange}>
+                  <MenuItem value="">모든 상태</MenuItem>
+                  <MenuItem value="ONAIR">방송 중</MenuItem>
+                  <MenuItem value="BLOCK">종료</MenuItem>
+                  <MenuItem value="READY">예정</MenuItem>
+                  <MenuItem value="OPENED">이용 가능</MenuItem>
                 </Select>
               </FormControl>
 
@@ -250,37 +242,12 @@ const BroadcastList = () => {
                   },
                 }}
               >
-                <InputLabel>Type</InputLabel>
-                <Select value={broadcastType} label="Type" onChange={handleBroadcastTypeChange}>
-                  <MenuItem value="">All Types</MenuItem>
-                  <MenuItem value="replays">Replays</MenuItem>
-                  <MenuItem value="lives">Lives</MenuItem>
-                  <MenuItem value="shortclips">Short Clips</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControl
-                fullWidth
-                size="small"
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    bgcolor: DARK_COLORS.background,
-                    color: DARK_COLORS.text.primary,
-                    '& fieldset': {
-                      borderColor: DARK_COLORS.border,
-                    },
-                  },
-                  '& .MuiInputLabel-root': {
-                    color: DARK_COLORS.text.secondary,
-                  },
-                }}
-              >
-                <InputLabel>Sort By</InputLabel>
-                <Select value={sortBy} label="Sort By" onChange={handleSortChange}>
-                  <MenuItem value="date_desc">Newest First</MenuItem>
-                  <MenuItem value="date_asc">Oldest First</MenuItem>
-                  <MenuItem value="products_desc">Most Products</MenuItem>
-                  <MenuItem value="coupons_desc">Most Coupons</MenuItem>
+                <InputLabel>정렬</InputLabel>
+                <Select value={sortBy} label="정렬" onChange={handleSortChange}>
+                  <MenuItem value="date_desc">최신순</MenuItem>
+                  <MenuItem value="date_asc">오래된순</MenuItem>
+                  <MenuItem value="products_desc">상품 많은순</MenuItem>
+                  <MenuItem value="coupons_desc">쿠폰 많은순</MenuItem>
                 </Select>
               </FormControl>
             </Stack>
@@ -290,7 +257,7 @@ const BroadcastList = () => {
               <TextField
                 fullWidth
                 size="small"
-                label="Start Date"
+                label="시작일"
                 type="date"
                 value={startDate}
                 onChange={handleStartDateChange}
@@ -312,7 +279,7 @@ const BroadcastList = () => {
               <TextField
                 fullWidth
                 size="small"
-                label="End Date"
+                label="종료일"
                 type="date"
                 value={endDate}
                 onChange={handleEndDateChange}
@@ -331,9 +298,9 @@ const BroadcastList = () => {
                 }}
               />
 
-              {(searchInput || brand || status || broadcastType || startDate || endDate || sortBy !== 'date_desc') && (
+              {(searchInput || brand || status || startDate || endDate || sortBy !== 'date_desc') && (
                 <Chip
-                  label="Clear Filters"
+                  label="필터 초기화"
                   onClick={handleClearFilters}
                   sx={{
                     color: DARK_COLORS.text.primary,
@@ -353,8 +320,8 @@ const BroadcastList = () => {
         {pagination && pagination.total > 0 && (
           <Box sx={{ mb: 3 }}>
             <Typography variant="body2" color={DARK_COLORS.text.secondary}>
-              Showing {broadcasts.length} of {pagination.total} broadcasts
-              {debouncedSearch && ` for "${debouncedSearch}"`}
+              {pagination.total}개 중 {broadcasts.length}개 방송 표시
+              {debouncedSearch && ` (검색어: "${debouncedSearch}")`}
             </Typography>
           </Box>
         )}
@@ -369,7 +336,7 @@ const BroadcastList = () => {
         {/* Error State */}
         {error && (
           <Alert severity="error" sx={{ mb: 4 }}>
-            Error loading broadcasts: {error.message}
+            방송 로딩 오류: {error.message}
           </Alert>
         )}
 
@@ -377,12 +344,12 @@ const BroadcastList = () => {
         {!loading && !error && broadcasts.length === 0 && (
           <Paper sx={{ bgcolor: DARK_COLORS.cardBg, p: 8, textAlign: 'center' }}>
             <Typography variant="h6" color={DARK_COLORS.text.primary} sx={{ mb: 2 }}>
-              No broadcasts found
+              방송을 찾을 수 없습니다
             </Typography>
             <Typography variant="body2" color={DARK_COLORS.text.secondary}>
               {debouncedSearch || brand || status
-                ? 'Try adjusting your filters or search query'
-                : 'No broadcast data available yet'}
+                ? '필터나 검색어를 조정해 보세요'
+                : '아직 방송 데이터가 없습니다'}
             </Typography>
           </Paper>
         )}

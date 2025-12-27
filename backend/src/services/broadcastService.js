@@ -28,19 +28,52 @@ async function getBroadcasts(options = {}) {
     // Calculate offset
     const offset = (page - 1) * limit;
 
-    // Build query
+    // Build query (no brands join needed since brand_name is directly in broadcasts table)
     let query = supabase
       .from('broadcasts')
-      .select('*, broadcast_products(id), broadcast_coupons(id)', { count: 'exact' });
+      .select(`
+        *,
+        broadcast_products(id, name),
+        broadcast_coupons(id)
+      `, { count: 'exact' });
 
-    // Apply search filter (search in title, brand_name, description)
+    // Apply search filter (search in title, brand_name, description, brands.name, ID, and product names)
     if (search) {
-      query = query.or(`title.ilike.%${search}%,brand_name.ilike.%${search}%,description.ilike.%${search}%`);
+      // Check if search is numeric (broadcast ID)
+      const isNumeric = /^\d+$/.test(search);
+
+      // Search for broadcasts that have matching products
+      const { data: matchingProducts } = await supabase
+        .from('broadcast_products')
+        .select('broadcast_id')
+        .ilike('name', `%${search}%`);
+
+      const productBroadcastIds = matchingProducts?.map(p => p.broadcast_id) || [];
+
+      // Build OR filter based on search type and matching products
+      let orConditions = [];
+
+      if (isNumeric) {
+        orConditions.push(`id.eq.${search}`);
+      }
+
+      orConditions.push(
+        `title.ilike.%${search}%`,
+        `brand_name.ilike.%${search}%`,
+        `description.ilike.%${search}%`
+      );
+
+      // Add product-matched broadcast IDs
+      if (productBroadcastIds.length > 0) {
+        orConditions.push(`id.in.(${productBroadcastIds.join(',')})`);
+      }
+
+      query = query.or(orConditions.join(','));
     }
 
-    // Apply brand filter
+    // Apply brand filter using brand_name
     if (brand) {
-      query = query.ilike('brand_name', brand);
+      query = query.eq('brand_name', brand);
     }
 
     // Apply status filter
@@ -61,19 +94,27 @@ async function getBroadcasts(options = {}) {
       query = query.lte('broadcast_date', end_date);
     }
 
-    // Apply sorting
-    switch (sort) {
-      case 'date_asc':
-        query = query.order('broadcast_date', { ascending: true });
-        break;
-      case 'date_desc':
-      default:
-        query = query.order('broadcast_date', { ascending: false });
-        break;
-    }
+    // For products/coupons sorting, we need to sort in memory after getting counts
+    const needsMemorySort = sort === 'products_desc' || sort === 'coupons_desc';
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    // Apply sorting (skip for memory-sorted cases)
+    if (!needsMemorySort) {
+      switch (sort) {
+        case 'date_asc':
+          query = query.order('broadcast_date', { ascending: true });
+          break;
+        case 'date_desc':
+        default:
+          query = query.order('broadcast_date', { ascending: false });
+          break;
+      }
+      // Apply pagination for date-based sorting
+      query = query.range(offset, offset + limit - 1);
+    } else {
+      // For memory sorting, fetch all matching records (up to a reasonable limit)
+      // Default order by date first
+      query = query.order('broadcast_date', { ascending: false });
+    }
 
     const { data, error, count } = await query;
 
@@ -83,7 +124,7 @@ async function getBroadcasts(options = {}) {
     }
 
     // Transform data to include counts
-    const broadcasts = data.map(broadcast => ({
+    let broadcasts = data.map(broadcast => ({
       ...broadcast,
       product_count: broadcast.broadcast_products?.length || 0,
       coupon_count: broadcast.broadcast_coupons?.length || 0,
@@ -94,6 +135,17 @@ async function getBroadcasts(options = {}) {
       delete b.broadcast_products;
       delete b.broadcast_coupons;
     });
+
+    // Apply memory-based sorting if needed
+    if (needsMemorySort) {
+      if (sort === 'products_desc') {
+        broadcasts.sort((a, b) => b.product_count - a.product_count);
+      } else if (sort === 'coupons_desc') {
+        broadcasts.sort((a, b) => b.coupon_count - a.coupon_count);
+      }
+      // Apply pagination after sorting
+      broadcasts = broadcasts.slice(offset, offset + limit);
+    }
 
     // Calculate pagination
     const totalPages = Math.ceil(count / limit);
@@ -126,10 +178,18 @@ async function getBroadcasts(options = {}) {
  */
 async function getBroadcastById(broadcastId) {
   try {
-    // Get broadcast base data
+    // Get broadcast base data with brand info
     const { data: broadcast, error: broadcastError } = await supabase
       .from('broadcasts')
-      .select('*')
+      .select(`
+        *,
+        brands:brand_id (
+          id,
+          name,
+          search_text,
+          status
+        )
+      `)
       .eq('id', broadcastId)
       .single();
 
@@ -361,12 +421,16 @@ async function searchBroadcasts(query, filters = {}) {
 
     let searchQuery = supabase
       .from('broadcasts')
-      .select('*, broadcast_products(name), broadcast_coupons(title)')
+      .select(`
+        *,
+        broadcast_products(name),
+        broadcast_coupons(title)
+      `)
       .or(`title.ilike.%${query}%,brand_name.ilike.%${query}%,description.ilike.%${query}%`)
       .limit(limit);
 
     if (brand) {
-      searchQuery = searchQuery.ilike('brand_name', brand);
+      searchQuery = searchQuery.eq('brand_name', brand);
     }
 
     const { data, error } = await searchQuery;
@@ -393,24 +457,51 @@ async function searchBroadcasts(query, filters = {}) {
 }
 
 /**
- * Get unique brands from broadcasts
- * @returns {Promise<Array>} List of unique brands
+ * Get brands from brands table
+ * @param {Object} options - Query options
+ * @returns {Promise<Array>} List of brands with metadata
  */
-async function getBrands() {
+async function getBrands(options = {}) {
   try {
-    const { data, error } = await supabase
-      .from('broadcasts')
-      .select('brand_name')
-      .order('brand_name');
+    const { includeInactive = false } = options;
 
-    if (error) throw error;
+    // Try to get from brands table first
+    let query = supabase
+      .from('brands')
+      .select('id, name, search_text, status, platform_id')
+      .order('name');
 
-    // Get unique brands
-    const brands = [...new Set(data.map(b => b.brand_name))].filter(Boolean);
+    // Filter only active brands by default
+    if (!includeInactive) {
+      query = query.eq('status', 'active');
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      // Fallback: Get unique brand names from broadcasts table
+      logger.warn('Brands table not available, falling back to broadcasts.brand_name');
+      const { data: broadcasts, error: broadcastError } = await supabase
+        .from('broadcasts')
+        .select('brand_name')
+        .not('brand_name', 'is', null)
+        .order('brand_name');
+
+      if (broadcastError) throw broadcastError;
+
+      // Extract unique brand names
+      const uniqueBrands = [...new Set(broadcasts.map(b => b.brand_name))];
+      const brandObjects = uniqueBrands.map(name => ({ id: name, name }));
+
+      return {
+        success: true,
+        data: brandObjects,
+      };
+    }
 
     return {
       success: true,
-      data: brands,
+      data: data || [],
     };
   } catch (error) {
     logger.error('getBrands error:', error);
