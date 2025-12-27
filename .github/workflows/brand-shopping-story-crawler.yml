@@ -1,0 +1,153 @@
+name: Brand Shopping Story Crawler
+
+on:
+  # Manual trigger only
+  workflow_dispatch:
+    inputs:
+      max_brands:
+        description: 'Maximum number of brands to process'
+        required: false
+        default: '10'
+      provider:
+        description: 'Vision provider (gpt/claude/gemini)'
+        required: false
+        default: 'gpt'
+      strategy:
+        description: 'Crawler strategy (gentle/moderate/aggressive)'
+        required: false
+        default: 'gentle'
+
+jobs:
+  crawl-shopping-stories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240  # 4 hours max
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv
+
+      - name: Set up virtual environment and install dependencies
+        run: |
+          cd crawler/cj
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install playwright playwright-stealth python-dotenv requests pillow openai
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Create .env file with secrets
+        run: |
+          cd crawler/cj
+          cat > .env << EOF
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+          EOF
+
+      - name: Run brand shopping story crawler
+        run: |
+          cd crawler/cj
+          source venv/bin/activate
+
+          # Set parameters from workflow inputs or defaults
+          MAX_BRANDS=${{ github.event.inputs.max_brands || '10' }}
+          PROVIDER=${{ github.event.inputs.provider || 'gpt' }}
+          STRATEGY=${{ github.event.inputs.strategy || 'gentle' }}
+
+          echo "Running crawler with:"
+          echo "  Max brands: $MAX_BRANDS"
+          echo "  Provider: $PROVIDER"
+          echo "  Strategy: $STRATEGY"
+
+          python brand_shopping_story_crawler.py \
+            --max-brands $MAX_BRANDS \
+            --provider $PROVIDER \
+            --crawler $STRATEGY \
+            2>&1 | tee crawler_output.log
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopping-story-results-${{ github.run_number }}
+          path: |
+            crawler/cj/shopping_story_results.json
+            crawler/cj/shopping_story_images/
+            crawler/cj/crawler_output.log
+          retention-days: 30
+
+      - name: Generate summary report
+        if: always()
+        run: |
+          cd crawler/cj
+
+          if [ -f shopping_story_results.json ]; then
+            echo "## Shopping Story Crawler Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract stats from JSON
+            BRANDS_PROCESSED=$(cat shopping_story_results.json | grep -o '"brands_processed": [0-9]*' | grep -o '[0-9]*')
+            STORIES_FOUND=$(cat shopping_story_results.json | grep -o '"shopping_stories_found": [0-9]*' | grep -o '[0-9]*')
+            SUCCESSES=$(cat shopping_story_results.json | grep -o '"successes": [0-9]*' | head -1 | grep -o '[0-9]*')
+            FAILURES=$(cat shopping_story_results.json | grep -o '"failures": [0-9]*' | head -1 | grep -o '[0-9]*')
+            COST=$(cat shopping_story_results.json | grep -o '"total_cost": [0-9.]*' | grep -o '[0-9.]*')
+
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Brands Processed | $BRANDS_PROCESSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Stories Found | $STORIES_FOUND |" >> $GITHUB_STEP_SUMMARY
+            echo "| Successes | $SUCCESSES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failures | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Success Rate | $(echo "scale=1; $SUCCESSES * 100 / ($SUCCESSES + $FAILURES)" | bc)% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Cost | \$$COST |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Show errors if any
+            if [ "$FAILURES" -gt 0 ]; then
+              echo "### Errors" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              cat shopping_story_results.json | grep -A 5 '"errors"' >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ No results file generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Commit results to repository (optional)
+        if: success()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Create results archive directory
+          mkdir -p crawler/cj/results_archive
+
+          # Copy results with timestamp
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          cp crawler/cj/shopping_story_results.json crawler/cj/results_archive/results_$TIMESTAMP.json
+
+          # Add and commit
+          git add crawler/cj/results_archive/
+          git commit -m "chore: Add crawler results from $TIMESTAMP [skip ci]" || echo "No changes to commit"
+
+          # Push changes
+          git push || echo "Nothing to push"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::warning::Brand shopping story crawler failed. Check the logs for details."

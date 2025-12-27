@@ -25,7 +25,7 @@ class NaverPlaywrightCrawler:
 
         # Strategy-based delays
         self.delay_strategies = {
-            'gentle': (3, 7),      # Very slow, most human-like
+            'gentle': (5, 10),     # Slow and steady for high success rate
             'moderate': (2, 4),    # Balanced
             'aggressive': (1, 2)   # Faster
         }
@@ -86,18 +86,20 @@ class NaverPlaywrightCrawler:
         print(f"\n🔍 Extracting images from class: {target_class}")
 
         try:
-            # Wait for target div or timeout
+            # Wait for target div with longer timeout (content takes ~10s to load)
             try:
-                await page.wait_for_selector(f".{target_class}", timeout=10000)
+                print(f"    ⏳ Waiting for dynamic content to load...")
+                await page.wait_for_selector(f".{target_class}", timeout=20000)
                 print(f"    ✓ Found target div: {target_class}")
             except:
-                print(f"    ⚠ Target div not found, using entire page")
+                print(f"    ⚠ Target div not found after 20s, using entire page")
 
             # Scroll to trigger lazy loading
             await self._scroll_page_slowly(page)
 
-            # Wait for images to load
-            await asyncio.sleep(2)
+            # Wait longer for images to fully load (increased from 2s to 8s)
+            print(f"    ⏳ Waiting for images to fully load...")
+            await asyncio.sleep(8)
 
             # Extract all image URLs
             image_urls = await page.evaluate("""
@@ -253,7 +255,9 @@ Headless: {self.headless}
 
                 # Navigate to page
                 print(f"\n📄 Navigating to page...")
-                await page.goto(url, wait_until='networkidle', timeout=60000)
+                # Use 'load' instead of 'networkidle' for better reliability
+                # 'load' waits for the page load event, which is less strict
+                await page.goto(url, wait_until='load', timeout=90000)
                 print(f"    ✓ Page loaded")
 
                 # Human-like delay
@@ -261,6 +265,13 @@ Headless: {self.headless}
 
                 # Random mouse movements
                 await self._random_mouse_movements(page)
+
+                # Additional wait for JavaScript to render content (critical for Naver)
+                # Extra wait for gentle strategy
+                wait_time = 10 if self.strategy == 'gentle' else 8
+                print(f"    ⏳ Waiting for JavaScript content to render...")
+                await asyncio.sleep(wait_time)
+                print(f"    ✓ Wait complete")
 
                 # Extract images
                 image_urls = await self._extract_images(page, target_class)
