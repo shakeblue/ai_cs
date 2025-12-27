@@ -55,7 +55,11 @@ class SupabaseSaver:
                    image_urls: List[str] = None,
                    raw_ocr_data: Dict[str, str] = None) -> Dict[str, Any]:
         """
-        Save event data to Supabase
+        Save event data to Supabase with upsert logic
+
+        Checks if event with same URL already exists:
+        - If exists: Updates the existing record
+        - If new: Creates a new record
 
         Args:
             event_data: Event information dictionary with keys:
@@ -73,44 +77,89 @@ class SupabaseSaver:
             Dictionary with success status and saved data
         """
         try:
-            # Prepare data for insertion
-            insert_data = {
+            url = event_data.get('url', '')
+
+            if not url:
+                return {
+                    'success': False,
+                    'data': None,
+                    'error': 'URL is required for save/update operations'
+                }
+
+            # Prepare data for insertion/update
+            data = {
                 'platform_name': event_data.get('platform_name', 'Naver Brand'),
                 'brand_name': event_data.get('brand_name', ''),
-                'url': event_data.get('url', ''),
+                'url': url,
                 'event_title': event_data.get('event_title', ''),
                 'event_date': event_data.get('event_date', ''),
                 'benefits_by_purchase_amount': event_data.get('benefits_by_purchase_amount', []),
                 'coupon_benefits': event_data.get('coupon_benefits', []),
                 'image_urls': image_urls or [],
                 'raw_ocr_data': raw_ocr_data or {},
-                'created_at': datetime.now().isoformat(),
                 'updated_at': datetime.now().isoformat()
             }
 
-            # Insert into Supabase
             print(f"💾 Saving event data to Supabase table: {self.table_name}")
-            print(f"   Brand: {insert_data['brand_name']}")
-            print(f"   Event: {insert_data['event_title']}")
+            print(f"   Brand: {data['brand_name']}")
+            print(f"   Event: {data['event_title']}")
+            print(f"   URL: {url}")
 
-            response = self.supabase.table(self.table_name).insert(insert_data).execute()
+            # Check if event already exists
+            existing_event = self.get_event_by_url(url)
 
-            if response.data:
-                print(f"✅ Event data saved successfully!")
-                print(f"   Record ID: {response.data[0].get('id')}")
+            if existing_event:
+                # Update existing record
+                event_id = existing_event['id']
+                print(f"   📝 Event exists (ID: {event_id}), updating...")
 
-                return {
-                    'success': True,
-                    'data': response.data[0],
-                    'error': None
-                }
+                response = self.supabase.table(self.table_name)\
+                    .update(data)\
+                    .eq('id', event_id)\
+                    .execute()
+
+                if response.data:
+                    print(f"✅ Event data updated successfully!")
+                    print(f"   Record ID: {event_id}")
+
+                    return {
+                        'success': True,
+                        'data': response.data[0],
+                        'record_id': event_id,
+                        'action': 'updated',
+                        'error': None
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'data': None,
+                        'error': 'No data returned from update'
+                    }
             else:
-                print(f"⚠️ No data returned from insert")
-                return {
-                    'success': False,
-                    'data': None,
-                    'error': 'No data returned from insert'
-                }
+                # Insert new record
+                print(f"   ➕ New event, creating...")
+                data['created_at'] = datetime.now().isoformat()
+
+                response = self.supabase.table(self.table_name).insert(data).execute()
+
+                if response.data:
+                    new_id = response.data[0].get('id')
+                    print(f"✅ Event data created successfully!")
+                    print(f"   Record ID: {new_id}")
+
+                    return {
+                        'success': True,
+                        'data': response.data[0],
+                        'record_id': new_id,
+                        'action': 'created',
+                        'error': None
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'data': None,
+                        'error': 'No data returned from insert'
+                    }
 
         except Exception as e:
             error_msg = str(e)
