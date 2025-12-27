@@ -26,18 +26,18 @@ else:
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 try:
-    from supabase_client import get_supabase_client
+    from db_client import get_db_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     try:
         # Try relative import
         import sys
         sys.path.append('..')
-        from supabase_client import get_supabase_client
+        from db_client import get_db_client
         SUPABASE_AVAILABLE = True
     except ImportError:
         SUPABASE_AVAILABLE = False
-        print("⚠️ Warning: supabase_client not available")
+        print("⚠️ Warning: db_client not available")
 
 
 class SupabaseSaver:
@@ -48,7 +48,8 @@ class SupabaseSaver:
         if not SUPABASE_AVAILABLE:
             raise ImportError("Supabase client is not available. Please check your setup.")
 
-        self.supabase = get_supabase_client()
+        db_client = get_db_client()
+        self.supabase = db_client.client
         self.table_name = 'naver_smartstore_event'
 
     def save_event(self, event_data: Dict[str, Any],
