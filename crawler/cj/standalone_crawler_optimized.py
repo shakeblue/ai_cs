@@ -87,7 +87,9 @@ class OptimizedStandaloneCrawler:
         verbose: bool = False,
         concurrency: int = 5,
         chunk_size: int = 10,
-        max_retries: int = 3
+        max_retries: int = 3,
+        crawl_livebridge: bool = True,
+        use_livebridge_llm: bool = False
     ):
         """
         Initialize the optimized crawler
@@ -97,11 +99,15 @@ class OptimizedStandaloneCrawler:
             concurrency: Number of concurrent browser contexts
             chunk_size: Number of broadcasts to process per chunk
             max_retries: Maximum retry attempts for failed crawls
+            crawl_livebridge: Whether to automatically crawl livebridge pages (default: True)
+            use_livebridge_llm: Whether to use LLM for livebridge image extraction (default: False for speed)
         """
         self.verbose = verbose
         self.concurrency = concurrency
         self.chunk_size = chunk_size
         self.max_retries = max_retries
+        self.crawl_livebridge = crawl_livebridge
+        self.use_livebridge_llm = use_livebridge_llm
 
         self.db: SupabaseClient = get_db_client()
         self.execution_id: Optional[str] = None
@@ -327,11 +333,21 @@ class OptimizedStandaloneCrawler:
             # Acquire browser context from pool
             context = await self.browser_pool.acquire_context()
 
-            # Create appropriate crawler with external context
+            # Create appropriate crawler with external context and livebridge settings
             if url_type == URLType.REPLAYS:
-                crawler = ReplaysCrawler(headless=True, external_context=context)
+                crawler = ReplaysCrawler(
+                    headless=True,
+                    external_context=context,
+                    crawl_livebridge=self.crawl_livebridge,
+                    use_livebridge_llm=self.use_livebridge_llm
+                )
             elif url_type == URLType.LIVES:
-                crawler = LivesCrawler(headless=True, external_context=context)
+                crawler = LivesCrawler(
+                    headless=True,
+                    external_context=context,
+                    crawl_livebridge=self.crawl_livebridge,
+                    use_livebridge_llm=self.use_livebridge_llm
+                )
             else:
                 logger.warning(f"Unsupported URL type: {url_type.value}")
                 return None
@@ -748,6 +764,18 @@ Performance Notes:
         help='Resume from last checkpoint'
     )
 
+    parser.add_argument(
+        '--no-livebridge',
+        action='store_true',
+        help='Disable automatic livebridge crawling (enabled by default)'
+    )
+
+    parser.add_argument(
+        '--livebridge-llm',
+        action='store_true',
+        help='Enable LLM for livebridge image extraction (slower but more complete)'
+    )
+
     args = parser.parse_args()
 
     # Validate arguments
@@ -763,7 +791,9 @@ Performance Notes:
             verbose=args.verbose,
             concurrency=args.concurrency,
             chunk_size=args.chunk_size,
-            max_retries=args.max_retries
+            max_retries=args.max_retries,
+            crawl_livebridge=not args.no_livebridge,  # Enabled by default
+            use_livebridge_llm=args.livebridge_llm  # Disabled by default
         )
 
         items_found = crawler.run(

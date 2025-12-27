@@ -525,3 +525,26 @@ class LivesCrawler(BaseCrawler):
         except Exception as e:
             logger.error(f"Failed to fetch products via API: {e}")
             return []
+
+    async def crawl(self, url: str) -> Dict[str, Any]:
+        """
+        Override crawl() to add automatic livebridge integration
+
+        Args:
+            url: The URL to crawl
+
+        Returns:
+            Complete crawl result with broadcast data and optional livebridge data
+        """
+        # Call parent crawl() to get broadcast data
+        result = await super().crawl(url)
+
+        # If livebridge crawling is enabled, try to crawl it
+        if self.crawl_livebridge:
+            broadcast_id = result.get('broadcast', {}).get('broadcast_id')
+            if broadcast_id:
+                livebridge_result = await self._crawl_livebridge_if_available(broadcast_id)
+                if livebridge_result:
+                    result['livebridge'] = livebridge_result
+
+        return result

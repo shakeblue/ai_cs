@@ -20,13 +20,16 @@ class BaseCrawler(ABC):
 
     CRAWLER_VERSION = "1.0.0"
 
-    def __init__(self, headless: bool = True, external_context=None):
+    def __init__(self, headless: bool = True, external_context=None,
+                 crawl_livebridge: bool = False, use_livebridge_llm: bool = True):
         """
         Initialize BaseCrawler
 
         Args:
             headless: Whether to run browser in headless mode
             external_context: Optional external browser context from pool (for optimization)
+            crawl_livebridge: Whether to automatically crawl livebridge pages (default: False)
+            use_livebridge_llm: Whether to use LLM for livebridge image extraction (default: True)
         """
         self.headless = headless
         self.browser: Optional[Browser] = None
@@ -34,6 +37,8 @@ class BaseCrawler(ABC):
         self.playwright = None
         self.external_context = external_context  # Context provided by browser pool
         self.owns_browser = external_context is None  # Track if we own the browser lifecycle
+        self.crawl_livebridge = crawl_livebridge
+        self.use_livebridge_llm = use_livebridge_llm
 
     @abstractmethod
     async def extract_data(self, url: str) -> Dict[str, Any]:
@@ -200,6 +205,92 @@ class BaseCrawler(ABC):
             Livebridge URL
         """
         return f"https://shoppinglive.naver.com/livebridge/{broadcast_id}"
+
+    async def _crawl_livebridge_if_available(self, broadcast_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Check if livebridge page is available and crawl it
+
+        Args:
+            broadcast_id: The broadcast ID
+
+        Returns:
+            Dict with livebridge crawl result or None
+        """
+        if not broadcast_id:
+            logger.debug("No broadcast_id provided, skipping livebridge")
+            return None
+
+        livebridge_url = self.construct_livebridge_url(broadcast_id)
+        logger.info(f"Checking livebridge: {livebridge_url}")
+
+        try:
+            # Check if livebridge page is accessible
+            import requests
+            response = requests.head(livebridge_url, timeout=5, verify=False, allow_redirects=True)
+
+            if response.status_code == 200:
+                logger.info("✓ Livebridge page accessible, crawling...")
+
+                # Import LivebridgeCrawler dynamically to avoid circular imports
+                try:
+                    from crawlers.livebridge_crawler import LivebridgeCrawler
+                except ImportError:
+                    logger.warning("Livebridge crawler not available")
+                    return {
+                        'status': 'error',
+                        'error': 'LivebridgeCrawler not available'
+                    }
+
+                # Initialize and crawl livebridge
+                livebridge_crawler = LivebridgeCrawler(
+                    use_llm=self.use_livebridge_llm,
+                    use_supabase=True
+                )
+
+                # Crawl livebridge page
+                livebridge_data = await livebridge_crawler.crawl(livebridge_url)
+
+                # Save to Supabase
+                livebridge_id = livebridge_crawler.save_to_supabase(livebridge_data)
+
+                if livebridge_id:
+                    logger.info(f"✓ Livebridge saved to Supabase (ID: {livebridge_id})")
+                    return {
+                        'status': 'success',
+                        'livebridge_id': livebridge_id,
+                        'url': livebridge_url,
+                        'data': livebridge_data,
+                        'records': {
+                            'special_coupons': len(livebridge_data.get('special_coupons', [])),
+                            'products': len(livebridge_data.get('products', [])),
+                            'live_benefits': len(livebridge_data.get('live_benefits', [])),
+                            'benefits_by_amount': len(livebridge_data.get('benefits_by_amount', [])),
+                            'simple_coupons': len(livebridge_data.get('coupons', []))
+                        }
+                    }
+                else:
+                    logger.warning("✗ Failed to save livebridge to Supabase")
+                    return {
+                        'status': 'save_failed',
+                        'url': livebridge_url,
+                        'error': 'Failed to save to Supabase'
+                    }
+
+            else:
+                logger.info(f"✗ Livebridge page not accessible (status: {response.status_code})")
+                return {
+                    'status': 'not_available',
+                    'url': livebridge_url,
+                    'http_status': response.status_code
+                }
+
+        except Exception as e:
+            logger.error(f"✗ Livebridge crawl failed: {e}")
+            return {
+                'status': 'error',
+                'url': livebridge_url,
+                'error': str(e)
+            }
 
     def _add_error(self, errors: list, error_type: str, message: str, **kwargs):
         """
