@@ -85,7 +85,7 @@ class LivesCrawler(BaseCrawler):
             # If API pagination successful, use it; otherwise fall back to DOM
             if api_products and len(api_products) >= total_product_count * 0.9:  # At least 90% of expected
                 logger.info(f"✓ API pagination successful: {len(api_products)}/{total_product_count} products")
-                broadcast_data['products'] = api_products
+                broadcast_data['products'] = api_products  # Already transformed by _extract_products above
                 broadcast_data['products_source'] = 'API'
             else:
                 # Fallback to DOM extraction
@@ -97,7 +97,7 @@ class LivesCrawler(BaseCrawler):
                     broadcast_data['products'] = dom_products
                     broadcast_data['products_source'] = 'DOM'
                 elif api_products:
-                    broadcast_data['products'] = api_products
+                    broadcast_data['products'] = api_products  # Already transformed
                     broadcast_data['products_source'] = 'API'
                 else:
                     logger.warning(f"Using JSON data ({len(json_products)} products)")

@@ -85,7 +85,7 @@ class ReplaysCrawler(BaseCrawler):
             # If API pagination successful, use it; otherwise fall back to DOM
             if api_paginated_products and len(api_paginated_products) >= total_product_count * 0.9:
                 logger.info(f"✓ API pagination successful: {len(api_paginated_products)}/{total_product_count} products")
-                broadcast_data['products'] = api_paginated_products
+                broadcast_data['products'] = self._extract_products(api_paginated_products)
                 broadcast_data['products_source'] = 'API'
             else:
                 # Fallback to DOM extraction
@@ -97,7 +97,7 @@ class ReplaysCrawler(BaseCrawler):
                     broadcast_data['products'] = dom_products
                     broadcast_data['products_source'] = 'DOM'
                 elif api_paginated_products:
-                    broadcast_data['products'] = api_paginated_products
+                    broadcast_data['products'] = self._extract_products(api_paginated_products)
                     broadcast_data['products_source'] = 'API'
                 else:
                     logger.warning(f"Using embedded API data ({len(api_products)} products)")
