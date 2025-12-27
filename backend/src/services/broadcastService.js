@@ -66,8 +66,7 @@ async function getBroadcasts(options = {}) {
       orConditions.push(
         `title.ilike.%${search}%`,
         `brand_name.ilike.%${search}%`,
-        `description.ilike.%${search}%`,
-        `brands.name.ilike.%${search}%`
+        `description.ilike.%${search}%`
       );
 
       // Add product-matched broadcast IDs
@@ -446,7 +445,7 @@ async function searchBroadcasts(query, filters = {}) {
         broadcast_products(name),
         broadcast_coupons(title)
       `)
-      .or(`title.ilike.%${query}%,brand_name.ilike.%${query}%,description.ilike.%${query}%,brands.name.ilike.%${query}%`)
+      .or(`title.ilike.%${query}%,brand_name.ilike.%${query}%,description.ilike.%${query}%`)
       .limit(limit);
 
     if (brand) {
