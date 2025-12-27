@@ -77,7 +77,7 @@ class ShortClipsCrawler(BaseCrawler):
 
         if shortclip_data:
             logger.info("Successfully extracted shortclip data from window.__shortclip")
-            broadcast_data = self._extract_from_shortclip_json(shortclip_data)
+            broadcast_data = await self._extract_from_shortclip_json(shortclip_data)
         else:
             # Try HTML parsing as fallback
             logger.info("window.__shortclip not found, trying HTML parsing...")
@@ -86,7 +86,7 @@ class ShortClipsCrawler(BaseCrawler):
 
             if json_data:
                 logger.info("Successfully extracted shortclip data from HTML parsing")
-                broadcast_data = self._extract_from_shortclip_json(json_data)
+                broadcast_data = await self._extract_from_shortclip_json(json_data)
             else:
                 # Last resort: API interception
                 logger.info("Embedded JSON not found, falling back to API interception...")
@@ -108,9 +108,9 @@ class ShortClipsCrawler(BaseCrawler):
 
         return broadcast_data
 
-    def _extract_from_shortclip_json(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _extract_from_shortclip_json(self, json_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract data from shortclip JSON
+        Extract data from shortclip JSON with API pagination support
 
         Args:
             json_data: The shortclip JSON data from window.__shortclip
@@ -136,6 +136,23 @@ class ShortClipsCrawler(BaseCrawler):
         if not broadcast_id:
             broadcast_id = shortclip_id
 
+        # Extract products - check if API pagination needed
+        json_products = json_data.get('products', [])
+        product_count = json_data.get('productCount', len(json_products))
+
+        products = []
+        if product_count > len(json_products) and broadcast_id:
+            # Try API pagination to get all products
+            logger.info(f"JSON has {len(json_products)}/{product_count} products - fetching via API...")
+            api_products_raw = await self._fetch_all_products_via_api(broadcast_id, product_count)
+            if api_products_raw:
+                products = self._extract_products(api_products_raw)
+                logger.info(f"✓ API pagination: {len(products)} products")
+            else:
+                products = self._extract_shortclip_products(json_products)
+        else:
+            products = self._extract_shortclip_products(json_products)
+
         return {
             'broadcast_id': broadcast_id,
             'shortclip_id': shortclip_id,
@@ -150,7 +167,7 @@ class ShortClipsCrawler(BaseCrawler):
             'expected_start_date': json_data.get('expectedExposeAt'),
             'stand_by_image': json_data.get('thumbnailUrl') or json_data.get('standByImage'),
             'status': json_data.get('status'),
-            'products': self._extract_shortclip_products(json_data.get('products', [])),
+            'products': products,
             'coupons': [],  # Usually not in shortclip JSON
             'live_benefits': [],  # Usually not in shortclip JSON
             'live_chat': [],  # Not available for shortclips
@@ -389,4 +406,77 @@ class ShortClipsCrawler(BaseCrawler):
 
         except Exception as e:
             logger.error(f"Failed to extract products from DOM: {e}")
+            return []
+
+    async def _fetch_all_products_via_api(self, broadcast_id: int, expected_count: int) -> List[Dict[str, Any]]:
+        """
+        Fetch all products via direct API pagination
+
+        Args:
+            broadcast_id: The broadcast ID
+            expected_count: Expected total product count
+
+        Returns:
+            List of raw product dicts from all API pages
+        """
+        try:
+            # Get cookies from current page context
+            cookies = await self.page.context.cookies()
+            cookie_dict = {c['name']: c['value'] for c in cookies}
+
+            # Use httpx for direct API requests
+            import httpx
+
+            all_products = []
+            page_num = 0
+
+            async with httpx.AsyncClient(verify=False) as client:
+                while True:
+                    api_url = (
+                        f"https://apis.naver.com/live_commerce_web/viewer_api_web/v1/broadcast/{broadcast_id}/products"
+                        f"?attachmentType=MAIN&categoryId=-1&page={page_num}&size=30&tr=lim"
+                    )
+
+                    try:
+                        response = await client.get(
+                            api_url,
+                            cookies=cookie_dict,
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Referer': f'https://view.shoppinglive.naver.com/shortclips/{broadcast_id}'
+                            },
+                            timeout=15.0
+                        )
+
+                        if response.status_code != 200:
+                            logger.warning(f"API request failed with status {response.status_code} on page {page_num}")
+                            break
+
+                        data = response.json()
+                        products = data.get('list', [])
+                        total_pages = data.get('totalPage', 0)
+
+                        logger.debug(f"Fetched page {page_num}: {len(products)} products (total pages: {total_pages})")
+
+                        if not products:
+                            break
+
+                        all_products.extend(products)
+
+                        # Check if we've fetched all pages
+                        if total_pages and page_num >= total_pages - 1:
+                            break
+
+                        page_num += 1
+                        await asyncio.sleep(0.3)  # Rate limiting
+
+                    except Exception as e:
+                        logger.debug(f"Error fetching page {page_num}: {e}")
+                        break
+
+            logger.info(f"✓ Fetched {len(all_products)} products from {page_num + 1} API pages")
+            return all_products
+
+        except Exception as e:
+            logger.error(f"Failed to fetch products via API: {e}")
             return []

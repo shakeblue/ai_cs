@@ -71,27 +71,43 @@ class ReplaysCrawler(BaseCrawler):
         # Extract broadcast fields
         broadcast_data = self._extract_broadcast_fields(broadcast_api_data)
 
-        # Extract products: Try DOM first (gets all 64), fallback to API (only 30)
+        # Extract products: Try API pagination first, fallback to DOM
         api_products = broadcast_data.get('products', [])
         total_product_count = broadcast_api_data.get('productCount', len(api_products))
 
         if total_product_count > len(api_products):
-            logger.info(f"API has {len(api_products)}/{total_product_count} products - extracting from DOM...")
-            dom_products = await self._extract_products_from_dom()
+            logger.info(f"API has {len(api_products)}/{total_product_count} products - fetching via API pagination...")
 
-            if len(dom_products) > len(api_products):
-                logger.info(f"✓ DOM extraction successful: {len(dom_products)} products (vs API: {len(api_products)})")
-                broadcast_data['products'] = dom_products
-                broadcast_data['products_source'] = 'DOM'
-            else:
-                logger.warning(f"DOM extraction got {len(dom_products)} products, using API data ({len(api_products)})")
+            # Try to fetch all products via direct API pagination
+            broadcast_id = broadcast_api_data.get('id')
+            api_paginated_products = await self._fetch_all_products_via_api(broadcast_id, total_product_count)
+
+            # If API pagination successful, use it; otherwise fall back to DOM
+            if api_paginated_products and len(api_paginated_products) >= total_product_count * 0.9:
+                logger.info(f"✓ API pagination successful: {len(api_paginated_products)}/{total_product_count} products")
+                broadcast_data['products'] = api_paginated_products
                 broadcast_data['products_source'] = 'API'
-                self._add_warning(
-                    warnings,
-                    "products",
-                    f"Only {len(api_products)}/{total_product_count} products available. Naver API limit.",
-                    len(api_products)
-                )
+            else:
+                # Fallback to DOM extraction
+                logger.info(f"API pagination incomplete ({len(api_paginated_products)} products), trying DOM extraction...")
+                dom_products = await self._extract_products_from_dom()
+
+                if len(dom_products) > len(api_paginated_products):
+                    logger.info(f"✓ DOM extraction successful: {len(dom_products)} products")
+                    broadcast_data['products'] = dom_products
+                    broadcast_data['products_source'] = 'DOM'
+                elif api_paginated_products:
+                    broadcast_data['products'] = api_paginated_products
+                    broadcast_data['products_source'] = 'API'
+                else:
+                    logger.warning(f"Using embedded API data ({len(api_products)} products)")
+                    broadcast_data['products_source'] = 'API'
+                    self._add_warning(
+                        warnings,
+                        "products",
+                        f"Only {len(api_products)}/{total_product_count} products available.",
+                        len(api_products)
+                    )
         else:
             broadcast_data['products_source'] = 'API'
 
@@ -460,4 +476,77 @@ class ReplaysCrawler(BaseCrawler):
 
         except Exception as e:
             logger.error(f"Failed to extract products from DOM: {e}")
+            return []
+
+    async def _fetch_all_products_via_api(self, broadcast_id: int, expected_count: int) -> List[Dict[str, Any]]:
+        """
+        Fetch all products via direct API pagination
+
+        Args:
+            broadcast_id: The broadcast ID
+            expected_count: Expected total product count
+
+        Returns:
+            List of raw product dicts from all API pages
+        """
+        try:
+            # Get cookies from current page context
+            cookies = await self.page.context.cookies()
+            cookie_dict = {c['name']: c['value'] for c in cookies}
+
+            # Use httpx for direct API requests
+            import httpx
+
+            all_products = []
+            page_num = 0
+
+            async with httpx.AsyncClient(verify=False) as client:
+                while True:
+                    api_url = (
+                        f"https://apis.naver.com/live_commerce_web/viewer_api_web/v1/broadcast/{broadcast_id}/products"
+                        f"?attachmentType=MAIN&categoryId=-1&page={page_num}&size=30&tr=lim"
+                    )
+
+                    try:
+                        response = await client.get(
+                            api_url,
+                            cookies=cookie_dict,
+                            headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Referer': f'https://view.shoppinglive.naver.com/replays/{broadcast_id}'
+                            },
+                            timeout=15.0
+                        )
+
+                        if response.status_code != 200:
+                            logger.warning(f"API request failed with status {response.status_code} on page {page_num}")
+                            break
+
+                        data = response.json()
+                        products = data.get('list', [])
+                        total_pages = data.get('totalPage', 0)
+
+                        logger.debug(f"Fetched page {page_num}: {len(products)} products (total pages: {total_pages})")
+
+                        if not products:
+                            break
+
+                        all_products.extend(products)
+
+                        # Check if we've fetched all pages
+                        if total_pages and page_num >= total_pages - 1:
+                            break
+
+                        page_num += 1
+                        await asyncio.sleep(0.3)  # Rate limiting
+
+                    except Exception as e:
+                        logger.debug(f"Error fetching page {page_num}: {e}")
+                        break
+
+            logger.info(f"✓ Fetched {len(all_products)} products from {page_num + 1} API pages")
+            return all_products
+
+        except Exception as e:
+            logger.error(f"Failed to fetch products via API: {e}")
             return []
