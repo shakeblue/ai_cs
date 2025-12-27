@@ -43,7 +43,7 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install playwright playwright-stealth python-dotenv requests pillow openai
+          pip install playwright playwright-stealth python-dotenv requests pillow openai supabase
           playwright install chromium
           playwright install-deps chromium
 
