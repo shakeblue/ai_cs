@@ -152,19 +152,31 @@ class OptimizedStandaloneCrawler:
 
         self.log(f"  ✅ Brand: {brand['name']} (ID: {brand['id']})")
 
-        # Load platform
-        platform = self.db.get_platform_by_id(brand['platform_id'])
+        # Load platform (optional - use default if not set)
+        platform = None
+        if brand.get('platform_id'):
+            platform = self.db.get_platform_by_id(brand['platform_id'])
+            if platform:
+                self.log(f"  ✅ Platform: {platform['name']} (ID: {platform['id']})")
+            else:
+                self.log(f"  ⚠️  Platform ID set but platform not found: {brand['platform_id']}")
+
+        # If no platform, get Naver Shopping Live from database as default
         if not platform:
-            raise ValueError(f"Platform not found with ID: {brand['platform_id']}")
+            self.log(f"  ℹ️  No platform configured, looking up default: Naver Shopping Live")
+            platform = self.db.get_platform_by_name('Naver Shopping Live')
+            if not platform:
+                raise ValueError("Default platform 'Naver Shopping Live' not found in database")
+            self.log(f"  ✅ Using default platform: {platform['name']} (ID: {platform['id']})")
 
-        self.log(f"  ✅ Platform: {platform['name']} (ID: {platform['id']})")
-
-        # Validate brand and platform
-        is_valid, error_message = validate_brand_platform(brand, platform)
-        if not is_valid:
-            raise ValueError(f"Configuration validation failed: {error_message}")
-
-        self.log(f"  ✅ Validation passed")
+        # Validate brand and platform (only if platform is from DB)
+        if brand.get('platform_id') and platform.get('id'):
+            is_valid, error_message = validate_brand_platform(brand, platform)
+            if not is_valid:
+                raise ValueError(f"Configuration validation failed: {error_message}")
+            self.log(f"  ✅ Validation passed")
+        else:
+            self.log(f"  ℹ️  Using default platform, skipping validation")
 
         # Load crawler config
         config = self.db.get_all_config()

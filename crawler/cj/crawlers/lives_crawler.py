@@ -160,13 +160,32 @@ class LivesCrawler(BaseCrawler):
         """Extract broadcast fields from JSON data"""
         broadcast_id = json_data.get('id')
 
+        # Extract brand name with fallback chain (product brand > category brand > broadcaster nickname)
+        shopping_products = json_data.get('shoppingProducts', [])
+        brand_name = (
+            # Priority 1: Product brand from first product (most accurate)
+            (shopping_products[0].get('brandName') if shopping_products else None) or
+            # Priority 2: Category brand (curated by Naver)
+            json_data.get('categoryComponent', {}).get('brandName') or
+            # Priority 3: Broadcaster nickname (fallback, may differ from product brand)
+            json_data.get('nickname')
+        )
+
+        # Extract mall name from first product
+        mall_name = shopping_products[0].get('mallName') if shopping_products else None
+
+        # Also preserve broadcaster name separately
+        broadcaster_name = json_data.get('nickname')
+
         return {
             'broadcast_id': broadcast_id,
             'replay_url': json_data.get('broadcastReplayEndUrl') or self._construct_replay_url(broadcast_id),
             'broadcast_url': json_data.get('broadcastEndUrl') or self._construct_broadcast_url(broadcast_id),
             'livebridge_url': self.construct_livebridge_url(broadcast_id) if broadcast_id else None,
             'title': json_data.get('title'),
-            'brand_name': json_data.get('nickname'),
+            'brand_name': brand_name,
+            'broadcaster_name': broadcaster_name,
+            'mall_name': mall_name,
             'description': json_data.get('description'),
             'broadcast_date': json_data.get('startDate'),
             'broadcast_end_date': json_data.get('endDate'),

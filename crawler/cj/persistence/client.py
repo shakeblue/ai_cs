@@ -112,6 +112,46 @@ class SupabaseClient:
             logger.error(f"Database connection test failed: {e}")
             raise
 
+    def get_brand_by_name(self, name: str) -> Optional[dict]:
+        """
+        Get brand by name from brands table with fuzzy matching
+
+        Args:
+            name: Brand name to search for
+
+        Returns:
+            dict: Brand record if found, None otherwise
+        """
+        try:
+            if not name:
+                return None
+
+            # Normalize the search name
+            normalized_name = name.strip()
+
+            # Try 1: Exact match (case-sensitive)
+            result = self.client.table('brands').select('*').eq('name', normalized_name).execute()
+            if result.data:
+                logger.debug(f"Found brand (exact match): '{normalized_name}'")
+                return result.data[0]
+
+            # Try 2: Case-insensitive match using ilike
+            result = self.client.table('brands').select('*').ilike('name', normalized_name).execute()
+            if result.data:
+                logger.debug(f"Found brand (case-insensitive): '{normalized_name}' -> '{result.data[0]['name']}'")
+                return result.data[0]
+
+            # Try 3: Partial match (contains)
+            result = self.client.table('brands').select('*').ilike('name', f'%{normalized_name}%').execute()
+            if result.data:
+                logger.debug(f"Found brand (partial match): '{normalized_name}' -> '{result.data[0]['name']}'")
+                return result.data[0]
+
+            return None
+        except Exception as e:
+            logger.error(f"Error looking up brand '{name}': {e}")
+            return None
+
     def __enter__(self):
         """Context manager entry"""
         self.connect()

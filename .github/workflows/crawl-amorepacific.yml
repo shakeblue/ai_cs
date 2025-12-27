@@ -1,3 +1,5 @@
+# ⚠️ WARNING: Brand "아모레퍼시픽" not found in database
+# This workflow will fail until the brand is added to the brands table
 name: Crawl Amorepacific (아모레퍼시픽)
 
 on:

@@ -619,6 +619,18 @@ class LivebridgeCrawler:
                 'discount_price': product.get('discounted_price')
             })
 
+        # Extract brand name with fallback chain
+        all_products = extracted_content.get('products', [])
+        brand_name = (
+            # Priority 1: Product brand from first product (most accurate)
+            (all_products[0].get('brand_name') if all_products else None) or
+            # Priority 2: Broadcaster nickname (fallback)
+            bridge_info.get('nickname')
+        )
+
+        # Extract mall name and broadcaster name
+        broadcaster_name = bridge_info.get('nickname')
+
         # Simplify coupons - remove confidence field
         simplified_coupons = []
         for coupon in extracted_content.get('coupons', []):
@@ -633,7 +645,8 @@ class LivebridgeCrawler:
             'url': url,
             'live_datetime': expected_start_date,
             'title': bridge_info.get('broadcastTitle') or bridge_info.get('title'),
-            'brand_name': bridge_info.get('nickname'),
+            'brand_name': brand_name,
+            'broadcaster_name': broadcaster_name,
             'special_coupons': extracted_content.get('special_coupons', []),
             'products': simplified_products,
             'live_benefits': extracted_content.get('live_benefits', []),

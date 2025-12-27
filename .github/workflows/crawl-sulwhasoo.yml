@@ -68,7 +68,7 @@ jobs:
           fi
 
           python standalone_crawler_optimized.py \
-            --brand-name "Sulwhasoo" \
+            --brand-name "설화수" \
             --trigger scheduled \
             --limit "$LIMIT" \
             --concurrency "$CONCURRENCY" \

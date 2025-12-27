@@ -309,6 +309,22 @@ class DatabaseUpserter:
             broadcast_id = transformed['broadcast']['id']
             logger.info(f"Processing broadcast {broadcast_id}: {transformed['broadcast'].get('title', '')[:50]}...")
 
+            # Look up brand_id from brand_name
+            brand_name = transformed['broadcast'].get('brand_name')
+            if brand_name:
+                logger.debug(f"Looking up brand_id for brand_name: '{brand_name}'")
+                brand = self.client.get_brand_by_name(brand_name)
+                if brand:
+                    brand_id = brand.get('id')
+                    transformed['broadcast']['brand_id'] = brand_id
+                    logger.debug(f"✓ Found brand_id: {brand_id} for brand_name: '{brand_name}'")
+                else:
+                    logger.warning(f"⚠ Brand not found in database: '{brand_name}' - brand_id will be null")
+                    transformed['broadcast']['brand_id'] = None
+            else:
+                logger.warning("⚠ No brand_name extracted - brand_id will be null")
+                transformed['broadcast']['brand_id'] = None
+
             # Validate data
             logger.info("Validating data...")
             valid, errors = SchemaValidator.validate_all(transformed)

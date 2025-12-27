@@ -42,7 +42,7 @@ class ReplaysCrawler(BaseCrawler):
 
         # Navigate to page
         logger.info(f"Navigating to {url}")
-        await self.page.goto(url, wait_until='networkidle')
+        await self.page.goto(url, wait_until='load', timeout=60000)
         logger.info("Page loaded, waiting for APIs...")
 
         # Optimization #3: Smart wait for required APIs instead of fixed 30s
@@ -160,13 +160,32 @@ class ReplaysCrawler(BaseCrawler):
         """Extract broadcast fields from API data"""
         broadcast_id = api_data.get('id')
 
+        # Extract brand name with fallback chain (product brand > category brand > broadcaster nickname)
+        shopping_products = api_data.get('shoppingProducts', [])
+        brand_name = (
+            # Priority 1: Product brand from first product (most accurate)
+            (shopping_products[0].get('brandName') if shopping_products else None) or
+            # Priority 2: Category brand (curated by Naver)
+            api_data.get('categoryComponent', {}).get('brandName') or
+            # Priority 3: Broadcaster nickname (fallback, may differ from product brand)
+            api_data.get('nickname')
+        )
+
+        # Extract mall name from first product
+        mall_name = shopping_products[0].get('mallName') if shopping_products else None
+
+        # Also preserve broadcaster name separately
+        broadcaster_name = api_data.get('nickname')
+
         return {
             'broadcast_id': broadcast_id,
             'replay_url': api_data.get('broadcastReplayEndUrl'),
             'broadcast_url': api_data.get('broadcastEndUrl'),
             'livebridge_url': self.construct_livebridge_url(broadcast_id) if broadcast_id else None,
             'title': api_data.get('title'),
-            'brand_name': api_data.get('nickname'),
+            'brand_name': brand_name,
+            'broadcaster_name': broadcaster_name,
+            'mall_name': mall_name,
             'description': api_data.get('description'),
             'broadcast_date': api_data.get('startDate'),
             'broadcast_end_date': api_data.get('endDate'),

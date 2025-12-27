@@ -33,6 +33,7 @@ class DataTransformer:
             'livebridge_url': broadcast.get('livebridge_url'),
             'title': broadcast.get('title', ''),
             'brand_name': broadcast.get('brand_name', ''),
+            'brand_id': None,  # Will be populated by upserter based on brand_name lookup
             'description': broadcast.get('description'),
             'broadcast_date': broadcast.get('broadcast_date'),
             'broadcast_end_date': broadcast.get('broadcast_end_date'),

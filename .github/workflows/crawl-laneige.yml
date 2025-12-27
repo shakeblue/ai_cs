@@ -68,7 +68,7 @@ jobs:
           fi
 
           python standalone_crawler_optimized.py \
-            --brand-name "Laneige" \
+            --brand-name "라네즈" \
             --trigger scheduled \
             --limit "$LIMIT" \
             --concurrency "$CONCURRENCY" \

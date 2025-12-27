@@ -153,6 +153,20 @@ class ShortClipsCrawler(BaseCrawler):
         else:
             products = self._extract_shortclip_products(json_products)
 
+        # Extract brand name with fallback chain
+        brand_name = (
+            # Priority 1: Product brand from first product (most accurate)
+            (products[0].get('brand_name') if products else None) or
+            # Priority 2: Channel name (broadcaster/seller)
+            json_data.get('channelName')
+        )
+
+        # Extract mall name from first product
+        mall_name = products[0].get('mall_name') if products else None
+
+        # Broadcaster name is the channel name
+        broadcaster_name = json_data.get('channelName')
+
         return {
             'broadcast_id': broadcast_id,
             'shortclip_id': shortclip_id,
@@ -160,7 +174,9 @@ class ShortClipsCrawler(BaseCrawler):
             'broadcast_url': broadcast_url or (self._construct_broadcast_url(broadcast_id) if broadcast_id else None),
             'livebridge_url': self.construct_livebridge_url(broadcast_id) if broadcast_id else None,
             'title': json_data.get('title'),
-            'brand_name': json_data.get('channelName'),
+            'brand_name': brand_name,
+            'broadcaster_name': broadcaster_name,
+            'mall_name': mall_name,
             'description': json_data.get('description'),
             'broadcast_date': json_data.get('expectedExposeAt'),  # Use expected expose time for shortclips
             'broadcast_end_date': None,  # Not available in shortclip JSON
@@ -213,13 +229,32 @@ class ShortClipsCrawler(BaseCrawler):
         broadcast = shortclip_data.get('broadcast', {})
         broadcast_id = broadcast.get('id')
 
+        # Extract brand name with fallback chain
+        shopping_products = broadcast.get('shoppingProducts', [])
+        brand_name = (
+            # Priority 1: Product brand from first product (most accurate)
+            (shopping_products[0].get('brandName') if shopping_products else None) or
+            # Priority 2: Category brand (curated by Naver)
+            broadcast.get('categoryComponent', {}).get('brandName') or
+            # Priority 3: Broadcaster nickname (fallback)
+            broadcast.get('nickname')
+        )
+
+        # Extract mall name from first product
+        mall_name = shopping_products[0].get('mallName') if shopping_products else None
+
+        # Also preserve broadcaster name separately
+        broadcaster_name = broadcast.get('nickname')
+
         return {
             'broadcast_id': broadcast_id,
             'replay_url': broadcast.get('broadcastReplayEndUrl') or self._construct_replay_url(broadcast_id),
             'broadcast_url': broadcast.get('broadcastEndUrl') or self._construct_broadcast_url(broadcast_id),
             'livebridge_url': self.construct_livebridge_url(broadcast_id) if broadcast_id else None,
             'title': broadcast.get('title'),
-            'brand_name': broadcast.get('nickname'),
+            'brand_name': brand_name,
+            'broadcaster_name': broadcaster_name,
+            'mall_name': mall_name,
             'description': broadcast.get('description'),
             'broadcast_date': broadcast.get('startDate'),
             'broadcast_end_date': broadcast.get('endDate'),
