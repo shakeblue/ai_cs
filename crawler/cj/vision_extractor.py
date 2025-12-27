@@ -184,7 +184,23 @@ class VisionExtractor:
 
 2. event_date: 이벤트 기간 (날짜 범위가 있으면 추출)
 
-3. benefits_by_purchase_amount: 구매 금액별 혜택 리스트
+3. live_benefits: 라이브 방송 전용 특별 혜택 리스트
+   ✅ 포함할 항목:
+   - "라이브 한정", "라이브 중", "생방송 중" 키워드가 있는 혜택
+   - 선착순 혜택 (예: "선착순 100명 추가 할인")
+   - 시간 제한 특별 혜택
+   - 라이브 시청자 전용 혜택
+
+   ❌ 제외할 항목:
+   - 구매 금액별 혜택 (이건 benefits_by_purchase_amount에)
+   - 쿠폰 관련 (이건 coupon_benefits에)
+
+   예시:
+   - "라이브 한정 20% 추가 할인"
+   - "라이브 접속자 특별 사은품"
+   - "생방송 중 선착순 50명 추가 할인"
+
+4. benefits_by_purchase_amount: 구매 금액별 혜택 리스트
    ✅ 포함할 항목:
    - 사은품 증정 (예: "5만원 이상 구매시 파우치 증정")
    - 포인트 적립 (예: "N pay 1% 적립", "뷰티포인트 적립")
@@ -193,8 +209,9 @@ class VisionExtractor:
 
    ❌ 제외할 항목:
    - "쿠폰" 키워드가 포함된 모든 항목 (이건 coupon_benefits에 넣기)
+   - 라이브 전용 혜택 (이건 live_benefits에)
 
-4. coupon_benefits: 쿠폰 혜택 리스트
+5. coupon_benefits: 쿠폰 혜택 리스트
    ✅ 포함할 항목:
    - "쿠폰"이라는 키워드가 명시된 모든 항목
    - 예: "10% 할인 쿠폰", "4천원 쿠폰", "장바구니 쿠폰"
@@ -204,29 +221,32 @@ class VisionExtractor:
 
 ⚠️ 중요 규칙:
 - 각 항목은 하나의 카테고리에만 포함하세요 (중복 금지!)
+- "라이브 한정/라이브 중" 키워드 → live_benefits
 - "쿠폰" 키워드가 있으면 → coupon_benefits
-- "쿠폰" 키워드가 없으면 → benefits_by_purchase_amount
+- 구매 금액 조건이 있으면 → benefits_by_purchase_amount
 
 응답 형식 (JSON만 출력):
 {
   "event_title": "제목 또는 null",
   "event_date": "날짜 또는 null",
-  "benefits_by_purchase_amount": ["혜택1", "혜택2"],
+  "live_benefits": ["라이브혜택1", "라이브혜택2"],
+  "benefits_by_purchase_amount": ["금액별혜택1", "금액별혜택2"],
   "coupon_benefits": ["쿠폰1", "쿠폰2"]
 }
 
 예시:
-입력: "5만원 이상 구매시 파우치 증정, 10% 할인 쿠폰 제공"
+입력: "라이브 한정 30% 할인, 5만원 이상 파우치 증정, 10% 할인 쿠폰"
 출력:
 {
-  "benefits_by_purchase_amount": ["5만원 이상 구매시 파우치 증정"],
+  "live_benefits": ["라이브 한정 30% 할인"],
+  "benefits_by_purchase_amount": ["5만원 이상 파우치 증정"],
   "coupon_benefits": ["10% 할인 쿠폰"]
 }
 
 최종 확인:
 - 모든 혜택을 빠짐없이 추출했나요?
 - 중복된 항목이 없나요?
-- "쿠폰" 키워드로 정확히 분류했나요?
+- 라이브/쿠폰/금액 키워드로 정확히 분류했나요?
 - JSON 형식만 응답하세요 (설명 없이)
 """
 

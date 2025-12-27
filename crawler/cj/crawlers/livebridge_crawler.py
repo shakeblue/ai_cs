@@ -170,18 +170,26 @@ class LivebridgeCrawler:
             raise
 
     def _fetch_page(self, url: str) -> Optional[str]:
-        """Fetch the livebridge page HTML"""
-        try:
-            logger.info(f"Fetching: {url}")
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
+        """Fetch the livebridge page HTML with retry logic"""
+        max_retries = 3
+        timeout = 30  # Increased timeout
 
-            logger.info(f"Page fetched: {len(response.text)} bytes")
-            return response.text
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Fetching (attempt {attempt + 1}/{max_retries}): {url}")
+                response = self.session.get(url, timeout=timeout)
+                response.raise_for_status()
 
-        except Exception as e:
-            logger.error(f"Failed to fetch page: {e}")
-            return None
+                logger.info(f"Page fetched: {len(response.text)} bytes")
+                return response.text
+
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to fetch page after {max_retries} attempts")
+                    return None
+
+        return None
 
     def _extract_next_data(self, html: str) -> Optional[Dict]:
         """Extract __NEXT_DATA__ from HTML"""
@@ -259,7 +267,7 @@ class LivebridgeCrawler:
             return []
 
     def _extract_products_from_api(self, broadcast_id: int) -> List[Dict]:
-        """Extract products from Naver Shopping Live API"""
+        """Extract products from Naver Shopping Live API with pagination support"""
         products = []
 
         try:
@@ -273,67 +281,116 @@ class LivebridgeCrawler:
                 'apigw-routing-key': 'real-home-api',
             }
 
-            # Fetch MAIN products
-            logger.info(f"Fetching MAIN products from API...")
-            params_main = {'attachmentType': 'MAIN', 'page': 0, 'size': 20}
-            response_main = self.session.get(api_url, headers=headers, params=params_main, timeout=10)
+            # Fetch ALL MAIN products with pagination
+            logger.info(f"Fetching MAIN products from API (with pagination)...")
+            page = 0
+            total_main = 0
+            while True:
+                params_main = {'attachmentType': 'MAIN', 'page': page, 'size': 20}
+                response_main = self.session.get(api_url, headers=headers, params=params_main, timeout=10)
 
-            if response_main.status_code == 200:
-                data_main = response_main.json()
-                main_products = data_main.get('list', [])
-                logger.info(f"Found {len(main_products)} MAIN products")
+                if response_main.status_code == 200:
+                    data_main = response_main.json()
+                    main_products = data_main.get('list', [])
 
-                for product in main_products:
-                    products.append({
-                        'product_id': str(product.get('productNo') or product.get('key')),
-                        'product_name': product.get('productName') or product.get('name'),
-                        'brand_name': product.get('brandName'),
-                        'price': product.get('price'),
-                        'sale_price': product.get('salePrice'),
-                        'discounted_price': product.get('discountedSalePrice'),
-                        'discount_rate': product.get('discountRate'),
-                        'product_url': product.get('productEndUrl'),
-                        'bridge_url': product.get('productBridgeUrl'),
-                        'image_url': product.get('image'),
-                        'stock': product.get('stock'),
-                        'status': product.get('status'),
-                        'is_represent': product.get('represent', False),
-                        'badges': self._extract_product_badges(product),
-                        'attachment_type': 'MAIN',
-                        'source': 'API'
-                    })
+                    if not main_products:
+                        # No more products, exit pagination loop
+                        break
 
-            # Fetch SUB products
-            logger.info(f"Fetching SUB products from API...")
-            params_sub = {'attachmentType': 'SUB', 'page': 0, 'size': 30}
-            response_sub = self.session.get(api_url, headers=headers, params=params_sub, timeout=10)
+                    logger.info(f"Page {page}: Found {len(main_products)} MAIN products")
+                    total_main += len(main_products)
 
-            if response_sub.status_code == 200:
-                data_sub = response_sub.json()
-                sub_products = data_sub.get('list', [])
-                logger.info(f"Found {len(sub_products)} SUB products")
+                    for product in main_products:
+                        products.append({
+                            'product_id': str(product.get('productNo') or product.get('key')),
+                            'product_name': product.get('productName') or product.get('name'),
+                            'brand_name': product.get('brandName'),
+                            'price': product.get('price'),
+                            'sale_price': product.get('salePrice'),
+                            'discounted_price': product.get('discountedSalePrice'),
+                            'discount_rate': product.get('discountRate'),
+                            'product_url': product.get('productEndUrl'),
+                            'bridge_url': product.get('productBridgeUrl'),
+                            'image_url': product.get('image'),
+                            'stock': product.get('stock'),
+                            'status': product.get('status'),
+                            'is_represent': product.get('represent', False),
+                            'badges': self._extract_product_badges(product),
+                            'attachment_type': 'MAIN',
+                            'source': 'API'
+                        })
 
-                for product in sub_products:
-                    products.append({
-                        'product_id': str(product.get('productNo') or product.get('key')),
-                        'product_name': product.get('productName') or product.get('name'),
-                        'brand_name': product.get('brandName'),
-                        'price': product.get('price'),
-                        'sale_price': product.get('salePrice'),
-                        'discounted_price': product.get('discountedSalePrice'),
-                        'discount_rate': product.get('discount Rate'),
-                        'product_url': product.get('productEndUrl'),
-                        'bridge_url': product.get('productBridgeUrl'),
-                        'image_url': product.get('image'),
-                        'stock': product.get('stock'),
-                        'status': product.get('status'),
-                        'is_represent': product.get('represent', False),
-                        'badges': self._extract_product_badges(product),
-                        'attachment_type': 'SUB',
-                        'source': 'API'
-                    })
+                    # Check if there are more pages using totalCount
+                    total_count = data_main.get('totalCount')
+                    if total_count and total_main >= total_count:
+                        # Collected all products based on totalCount
+                        break
+                    if len(main_products) < 20:
+                        # Last page has fewer items than page size
+                        break
 
-            logger.info(f"Total products extracted: {len(products)}")
+                    page += 1
+                else:
+                    logger.warning(f"Failed to fetch MAIN products page {page}: {response_main.status_code}")
+                    break
+
+            logger.info(f"Total MAIN products: {total_main}")
+
+            # Fetch ALL SUB products with pagination
+            logger.info(f"Fetching SUB products from API (with pagination)...")
+            page = 0
+            total_sub = 0
+            while True:
+                params_sub = {'attachmentType': 'SUB', 'page': page, 'size': 20}
+                response_sub = self.session.get(api_url, headers=headers, params=params_sub, timeout=10)
+
+                if response_sub.status_code == 200:
+                    data_sub = response_sub.json()
+                    sub_products = data_sub.get('list', [])
+
+                    if not sub_products:
+                        # No more products, exit pagination loop
+                        break
+
+                    logger.info(f"Page {page}: Found {len(sub_products)} SUB products")
+                    total_sub += len(sub_products)
+
+                    for product in sub_products:
+                        products.append({
+                            'product_id': str(product.get('productNo') or product.get('key')),
+                            'product_name': product.get('productName') or product.get('name'),
+                            'brand_name': product.get('brandName'),
+                            'price': product.get('price'),
+                            'sale_price': product.get('salePrice'),
+                            'discounted_price': product.get('discountedSalePrice'),
+                            'discount_rate': product.get('discountRate'),
+                            'product_url': product.get('productEndUrl'),
+                            'bridge_url': product.get('productBridgeUrl'),
+                            'image_url': product.get('image'),
+                            'stock': product.get('stock'),
+                            'status': product.get('status'),
+                            'is_represent': product.get('represent', False),
+                            'badges': self._extract_product_badges(product),
+                            'attachment_type': 'SUB',
+                            'source': 'API'
+                        })
+
+                    # Check if there are more pages using totalCount
+                    total_count = data_sub.get('totalCount')
+                    if total_count and total_sub >= total_count:
+                        # Collected all products based on totalCount
+                        break
+                    if len(sub_products) < 20:
+                        # Last page has fewer items than page size
+                        break
+
+                    page += 1
+                else:
+                    logger.warning(f"Failed to fetch SUB products page {page}: {response_sub.status_code}")
+                    break
+
+            logger.info(f"Total SUB products: {total_sub}")
+            logger.info(f"Total products extracted: {len(products)} (MAIN: {total_main}, SUB: {total_sub})")
             return products
 
         except Exception as e:
@@ -471,6 +528,9 @@ class LivebridgeCrawler:
                 logger.info(f"LLM extraction successful")
 
                 # Map vision extractor output to our format
+                if 'live_benefits' in extracted:
+                    result['live_benefits'].extend(extracted['live_benefits'])
+
                 if 'benefits_by_purchase_amount' in extracted:
                     result['benefits_by_amount'].extend(extracted['benefits_by_purchase_amount'])
 
@@ -481,10 +541,6 @@ class LivebridgeCrawler:
                             'text': coupon_text,
                             'confidence': 0.85
                         })
-
-                # Event title might contain live benefits info
-                if 'event_title' in extracted and extracted['event_title']:
-                    result['live_benefits'].append(extracted['event_title'])
 
             else:
                 logger.warning("Vision extractor returned no data")
