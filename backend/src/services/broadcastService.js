@@ -28,11 +28,17 @@ async function getBroadcasts(options = {}) {
     // Calculate offset
     const offset = (page - 1) * limit;
 
-    // Build query (no brands join needed since brand_name is directly in broadcasts table)
+    // Build query with optional brands table join (brand_id may be null)
     let query = supabase
       .from('broadcasts')
       .select(`
         *,
+        brands:brand_id (
+          id,
+          name,
+          search_text,
+          status
+        ),
         broadcast_products(id, name),
         broadcast_coupons(id)
       `, { count: 'exact' });
@@ -60,7 +66,8 @@ async function getBroadcasts(options = {}) {
       orConditions.push(
         `title.ilike.%${search}%`,
         `brand_name.ilike.%${search}%`,
-        `description.ilike.%${search}%`
+        `description.ilike.%${search}%`,
+        `brands.name.ilike.%${search}%`
       );
 
       // Add product-matched broadcast IDs
@@ -71,9 +78,16 @@ async function getBroadcasts(options = {}) {
       query = query.or(orConditions.join(','));
     }
 
-    // Apply brand filter using brand_name
+    // Apply brand filter - support both brand_id (UUID) and brand_name (string)
     if (brand) {
-      query = query.eq('brand_name', brand);
+      // Check if brand is a UUID (brand_id) or string (brand_name)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(brand)) {
+        query = query.eq('brand_id', brand);
+      } else {
+        // Fallback to brand_name for backward compatibility
+        query = query.eq('brand_name', brand);
+      }
     }
 
     // Apply status filter
@@ -423,14 +437,26 @@ async function searchBroadcasts(query, filters = {}) {
       .from('broadcasts')
       .select(`
         *,
+        brands:brand_id (
+          id,
+          name,
+          search_text,
+          status
+        ),
         broadcast_products(name),
         broadcast_coupons(title)
       `)
-      .or(`title.ilike.%${query}%,brand_name.ilike.%${query}%,description.ilike.%${query}%`)
+      .or(`title.ilike.%${query}%,brand_name.ilike.%${query}%,description.ilike.%${query}%,brands.name.ilike.%${query}%`)
       .limit(limit);
 
     if (brand) {
-      searchQuery = searchQuery.eq('brand_name', brand);
+      // Check if brand is a UUID (brand_id) or string (brand_name)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(brand)) {
+        searchQuery = searchQuery.eq('brand_id', brand);
+      } else {
+        searchQuery = searchQuery.eq('brand_name', brand);
+      }
     }
 
     const { data, error } = await searchQuery;
