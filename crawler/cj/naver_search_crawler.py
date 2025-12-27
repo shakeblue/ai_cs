@@ -56,11 +56,16 @@ class NaverSearchCrawler:
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_argument('--remote-debugging-port=9222')
 
+        # Bypass SSL certificate errors
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--ignore-ssl-errors')
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
         # Use system ChromeDriver (already installed at /usr/bin/chromedriver)
         service = Service('/usr/bin/chromedriver')
         self.driver = webdriver.Chrome(service=service, options=options)
-        # Reduced from 10s to 2s for faster failures (API-First approach)
-        self.driver.implicitly_wait(2)
+        # Increased to 10s to allow dynamic content to load
+        self.driver.implicitly_wait(10)
 
     def close_driver(self):
         """Close WebDriver"""
@@ -87,7 +92,7 @@ class NaverSearchCrawler:
 
             # Navigate to search page
             self.driver.get(search_url)
-            time.sleep(3)  # Wait for initial load
+            time.sleep(5)  # Wait for initial load and dynamic content
 
             # Scroll to load more results
             self.scroll_to_load_more(max_scrolls=5)
@@ -126,6 +131,7 @@ class NaverSearchCrawler:
     def extract_broadcasts(self, limit=50):
         """
         Extract broadcast information from search results
+        Collects all broadcast links (lives, replays, shortclips) and merges them
 
         Returns:
             List of broadcast dictionaries
@@ -133,41 +139,52 @@ class NaverSearchCrawler:
         broadcasts = []
 
         try:
-            # Find all broadcast cards (various possible selectors)
-            card_selectors = [
-                ".live_card",
-                ".ProductLive_live_card__",
-                "[class*='live_card']",
-                "[class*='LiveCard']",
-                ".live-card",
+            # Wait for page to fully render
+            logger.info("Waiting for content to load...")
+            time.sleep(3)  # Additional wait for JavaScript rendering
+
+            # Collect links from all broadcast types
+            logger.info("Collecting all broadcast links...")
+            link_selectors = [
                 "a[href*='/lives/']",
                 "a[href*='/replays/']",
                 "a[href*='/shortclips/']",
             ]
 
-            cards = []
-            for selector in card_selectors:
+            all_links = []
+            seen_urls = set()
+
+            for selector in link_selectors:
                 try:
-                    found_cards = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if found_cards:
-                        cards = found_cards
-                        logger.info(f"Found {len(cards)} cards using selector: {selector}")
-                        break
-                except:
+                    # Wait a bit between selectors to ensure page stability
+                    time.sleep(0.5)
+                    found_links = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    logger.info(f"Found {len(found_links)} links using selector: {selector}")
+
+                    # Add unique links only (deduplicate)
+                    for link in found_links:
+                        url = link.get_attribute("href")
+                        if url and url not in seen_urls:
+                            all_links.append(link)
+                            seen_urls.add(url)
+                except Exception as e:
+                    logger.warning(f"Failed to get links for selector {selector}: {e}")
                     continue
 
-            if not cards:
-                logger.warning("No broadcast cards found")
+            logger.info(f"Total unique broadcast links found: {len(all_links)}")
+
+            if not all_links:
+                logger.warning("No broadcast links found")
                 return []
 
-            # Extract information from each card
-            for idx, card in enumerate(cards[:limit]):
+            # Extract information from each link (limit to max specified)
+            for idx, link in enumerate(all_links[:limit]):
                 try:
-                    broadcast = self.extract_broadcast_info(card, idx)
+                    broadcast = self.extract_broadcast_info(link, idx)
                     if broadcast:
                         broadcasts.append(broadcast)
                 except Exception as e:
-                    logger.warning(f"Failed to extract card {idx}: {e}")
+                    logger.warning(f"Failed to extract link {idx}: {e}")
                     continue
 
         except Exception as e:
