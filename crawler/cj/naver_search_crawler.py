@@ -59,7 +59,8 @@ class NaverSearchCrawler:
         # Use system ChromeDriver (already installed at /usr/bin/chromedriver)
         service = Service('/usr/bin/chromedriver')
         self.driver = webdriver.Chrome(service=service, options=options)
-        self.driver.implicitly_wait(10)
+        # Reduced from 10s to 2s for faster failures (API-First approach)
+        self.driver.implicitly_wait(2)
 
     def close_driver(self):
         """Close WebDriver"""
@@ -175,9 +176,17 @@ class NaverSearchCrawler:
         return broadcasts
 
     def extract_broadcast_info(self, card, index):
-        """Extract information from a single broadcast card"""
+        """
+        Extract information from a single broadcast card
+
+        API-FIRST APPROACH: Only extract URL and event type from search cards.
+        All other metadata (title, thumbnail, status, dates, brand, etc.) will be
+        extracted from the detail page API by the broadcast crawlers.
+
+        This avoids timeout issues caused by changing CSS selectors on search cards.
+        """
         try:
-            # Extract URL (required)
+            # Extract URL (required) - THIS WORKS!
             url = self.extract_url(card)
             if not url:
                 return None
@@ -185,31 +194,26 @@ class NaverSearchCrawler:
             # Extract external ID from URL
             external_id = self.extract_external_id_from_url(url)
 
-            # Extract title
-            title = self.extract_title(card)
-
-            # Extract thumbnail
-            thumbnail = self.extract_thumbnail(card)
-
             # Determine event type from URL
             event_type = self.determine_event_type(url)
 
-            # Extract status (live, replay, upcoming)
-            status = self.extract_status(card)
-
-            # Extract date information if available
-            date_info = self.extract_date_info(card)
+            # SKIP metadata extraction from search card to avoid timeouts
+            # The detail crawlers will get all this from the API:
+            # - title, thumbnail, status, dates (from broadcast API)
+            # - brand_name, broadcaster_name, mall_name (from products API)
+            # - products, viewer counts, etc.
 
             broadcast = {
                 'external_id': external_id,
                 'url': url,
-                'title': title,
-                'thumbnail': thumbnail,
                 'event_type': event_type,
-                'status': status,
-                'start_date': date_info.get('start_date'),
                 'extracted_at': datetime.now().isoformat(),
                 'index': index,
+                # These will be populated by detail crawlers:
+                'title': None,
+                'thumbnail': None,
+                'status': None,
+                'start_date': None,
             }
 
             return broadcast
@@ -258,8 +262,16 @@ class NaverSearchCrawler:
 
         return None
 
+    # ============================================================================
+    # DEPRECATED METHODS (API-First Approach)
+    # ============================================================================
+    # These methods are no longer used because we skip metadata extraction from
+    # search cards and let the detail crawlers get everything from the API.
+    # Kept for reference in case we need to debug the search page structure.
+    # ============================================================================
+
     def extract_title(self, card):
-        """Extract title from card"""
+        """[DEPRECATED] Extract title from card - not used in API-First approach"""
         title_selectors = [
             ".live_title",
             ".ProductLive_live_title__",
@@ -281,7 +293,7 @@ class NaverSearchCrawler:
         return "Untitled"
 
     def extract_thumbnail(self, card):
-        """Extract thumbnail URL from card"""
+        """[DEPRECATED] Extract thumbnail URL from card - not used in API-First approach"""
         try:
             img = card.find_element(By.CSS_SELECTOR, "img")
             return img.get_attribute("src")
@@ -301,7 +313,7 @@ class NaverSearchCrawler:
         return None
 
     def extract_status(self, card):
-        """Extract broadcast status (live, upcoming, ended)"""
+        """[DEPRECATED] Extract broadcast status - not used in API-First approach"""
         try:
             # Look for status badge
             badge_selectors = [".badge", ".live_badge", "[class*='badge']", ".status"]
@@ -327,7 +339,7 @@ class NaverSearchCrawler:
         return None
 
     def extract_date_info(self, card):
-        """Extract date information from card"""
+        """[DEPRECATED] Extract date information - not used in API-First approach"""
         date_info = {
             'start_date': None,
         }
