@@ -1130,55 +1130,54 @@ const calculateLiveStatus = (p_broadcast_date, p_start_time, p_end_time) => {
 };
 
 /**
- * 대시보드 데이터 조회 (live_broadcasts 테이블 사용, Supabase)
+ * 대시보드 데이터 조회 (broadcasts 테이블 사용, Supabase)
  * @returns {Promise<Object>} - 대시보드 통계 데이터
  */
 const getDashboardData = async () => {
   try {
     // 캐시 확인 (1분 캐시 - 최신 데이터를 위해 짧게 설정)
-    const _v_cache_key = 'dashboard:live:stats';
+    const _v_cache_key = 'dashboard:broadcasts:stats';
     // 실시간 데이터를 위해 캐시 비활성화 (임시)
     // const _v_cached = await cache.getCache(_v_cache_key);
-    // 
+    //
     // if (_v_cached) {
     //   logger.debug('대시보드 데이터 캐시 히트');
     //   return _v_cached;
     // }
-    
-    // 모든 라이브 방송 데이터 조회 (Supabase)
+
+    // 모든 방송 데이터 조회 (Supabase - broadcasts 테이블)
     // Supabase는 기본적으로 1000개 limit이 있으므로 페이지네이션으로 모든 데이터 가져오기
-    let _v_all_lives = [];
+    let _v_all_broadcasts = [];
     let _v_page = 0;
     const _v_page_size = 1000;
     let _v_has_more = true;
-    
+
     while (_v_has_more) {
       const { data: _v_page_data, error: _v_page_error } = await supabaseClient
-        .from('live_broadcasts')
+        .from('broadcasts')
         .select('*')
         .order('broadcast_date', { ascending: false })
-        .order('broadcast_start_time', { ascending: false })
         .range(_v_page * _v_page_size, (_v_page + 1) * _v_page_size - 1);
-      
+
       if (_v_page_error) {
         logger.error(`Supabase 페이지 ${_v_page} 조회 실패:`, _v_page_error);
         break;
       }
-      
+
       if (_v_page_data && _v_page_data.length > 0) {
-        _v_all_lives = _v_all_lives.concat(_v_page_data);
+        _v_all_broadcasts = _v_all_broadcasts.concat(_v_page_data);
         _v_has_more = _v_page_data.length === _v_page_size;
         _v_page++;
-        logger.debug(`페이지 ${_v_page} 로드 완료: ${_v_page_data.length}개 (총 ${_v_all_lives.length}개)`);
+        logger.debug(`페이지 ${_v_page} 로드 완료: ${_v_page_data.length}개 (총 ${_v_all_broadcasts.length}개)`);
       } else {
         _v_has_more = false;
       }
     }
-    
-    logger.info(`전체 라이브 방송 데이터 로드 완료: ${_v_all_lives.length}개`);
-    
+
+    logger.info(`전체 방송 데이터 로드 완료: ${_v_all_broadcasts.length}개`);
+
     const _v_error = null; // 에러 변수 초기화
-    
+
     if (_v_error) {
       logger.error('Supabase 대시보드 데이터 조회 실패:', _v_error);
       // 에러 발생 시 빈 데이터 반환
@@ -1201,24 +1200,62 @@ const getDashboardData = async () => {
         },
       };
     }
-    
-    const _v_all_lives_data = _v_all_lives || [];
-    
-    // 현재 시간 기준으로 상태 재계산
-    const _v_lives_with_status = _v_all_lives_data.map(_v_live => {
+
+    const _v_all_broadcasts_data = _v_all_broadcasts || [];
+
+    // Helper function to extract time from timestamp in HH:MM format
+    const extractTime = (timestamp) => {
+      if (!timestamp) return null;
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return null;
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    };
+
+    // 현재 시간 기준으로 상태 재계산 및 필드 매핑
+    const _v_lives_with_status = _v_all_broadcasts_data.map(_v_broadcast => {
+      // Extract date and times from timestamps
+      // Use expected_start_date as primary date field (broadcast_date/broadcast_end_date are often null)
+      const start_timestamp = _v_broadcast.expected_start_date || _v_broadcast.broadcast_date;
+      const end_timestamp = _v_broadcast.broadcast_end_date;
+
+      const broadcast_date = start_timestamp ? new Date(start_timestamp).toISOString().split('T')[0] : null;
+      const broadcast_start_time = extractTime(start_timestamp);
+      const broadcast_end_time = extractTime(end_timestamp);
+
       const _v_calculated_status = calculateLiveStatus(
-        _v_live.broadcast_date,
-        _v_live.broadcast_start_time,
-        _v_live.broadcast_end_time
+        broadcast_date,
+        broadcast_start_time,
+        broadcast_end_time
       );
+
       return {
-        ..._v_live,
+        // Map broadcasts fields to live_broadcasts format
+        live_id: String(_v_broadcast.id), // Convert bigint to string
+        broadcast_date: broadcast_date,
+        broadcast_start_time: broadcast_start_time,
+        broadcast_end_time: broadcast_end_time,
+        brand_name: _v_broadcast.brand_name,
+        live_title_customer: _v_broadcast.title,
+        live_title_cs: _v_broadcast.description,
+        source_url: _v_broadcast.livebridge_url || _v_broadcast.broadcast_url,
+        thumbnail_url: _v_broadcast.stand_by_image,
+        broadcast_type: _v_broadcast.broadcast_type,
+        platform_name: 'Naver Shopping Live', // Hardcoded as per Option 2
+
+        // Status fields
         status: _v_calculated_status,
         calculatedStatus: _v_calculated_status,
-        title: _v_live.live_title_customer || _v_live.live_title_cs,
-        subtitle: _v_live.live_title_cs,
-        channel_name: _v_live.platform_name || _v_live.channel_name,
-        event_url: _v_live.source_url,
+
+        // Convenience fields for dashboard
+        title: _v_broadcast.title,
+        subtitle: _v_broadcast.description,
+        channel_name: 'Naver Shopping Live',
+        event_url: _v_broadcast.livebridge_url || _v_broadcast.broadcast_url,
+
+        // Preserve original broadcast data
+        ..._v_broadcast
       };
     });
     
@@ -1324,8 +1361,8 @@ const getDashboardData = async () => {
     
     // 캐시 저장 (1분 - 최신 데이터를 위해 짧게 설정)
     await cache.setCache(_v_cache_key, _v_result, 60);
-    
-    logger.info('대시보드 데이터 조회 완료 (Supabase, live_broadcasts 테이블 사용)');
+
+    logger.info('대시보드 데이터 조회 완료 (Supabase, broadcasts 테이블 사용)');
     return _v_result;
   } catch (p_error) {
     logger.error('대시보드 데이터 조회 실패:', p_error);
